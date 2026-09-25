@@ -59,6 +59,17 @@ h2{font:600 19px/1.2 var(--display);margin:26px 0 10px;letter-spacing:-.01em}
 .stub .name{font:600 20px/1.2 var(--display);margin:4px 0 2px}
 .stub .amt{font:700 30px/1 var(--display);letter-spacing:-.02em}
 .stub button{margin-top:14px;background:color-mix(in srgb, currentColor 16%, transparent);border:0;color:inherit;padding:8px 12px;border-radius:8px;font-weight:600;font-size:14px}
+.stub.multi{grid-template-columns:1fr}
+.stub.multi::before{top:86px;left:-9px;right:auto;transform:none}
+.stub.multi::after{top:86px;bottom:auto;right:-9px;transform:none}
+.stub.multi .hd{height:95px;padding:16px 18px 0;display:flex;justify-content:space-between;gap:12px;border-bottom:2px dashed color-mix(in srgb, currentColor 40%, transparent)}
+.stub.multi .hd .amt{align-self:center}
+.stub.multi .items{padding:6px 18px 16px}
+.stub.multi .it{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid color-mix(in srgb, currentColor 18%, transparent)}
+.stub.multi .it .n{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stub.multi .it .n small{display:block;font-weight:400;opacity:.8;font-size:12px}
+.stub.multi .it button{margin:0;padding:5px 10px;font-size:13px}
+.stub.multi .all{width:100%;margin-top:12px}
 .stub.empty{background:var(--surface);color:var(--ink);border:1px solid var(--line)}
 
 .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
@@ -152,7 +163,7 @@ dialog h3{font:600 20px var(--display);margin:0 0 14px}
 .toast.show{opacity:1}
 @media (prefers-reduced-motion: reduce){.toast{transition:none}}
 </style>
-<meta name="bayad-version" content="1.2">
+<meta name="bayad-version" content="1.6">
 <meta name="theme-color" content="#2F6B4A">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -203,14 +214,16 @@ const CATS = ["Food","Transport","Bills","Loan","Household","Load & internet","H
 const WEEKDAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
 /* ---------- state ---------- */
-let S = {expenses:[], bills:[], funds:[], activeFund:null};
+let S = {expenses:[], bills:[], funds:[], activeFund:null, salary:null, trackFrom:latest20()};
 let tab = "home";
 let expMonth = TODAY().slice(0,7);
 let expMode = "cut";
 let expCut = null;
+// Bills due before this date count as already settled (so old loan payments don't pile up as overdue).
+function latest20(){ const d = new Date(); return ymd(new Date(d.getFullYear(), d.getMonth() - (d.getDate() < 20 ? 1 : 0), 20)); }
 function normalize(s){
   s = s && typeof s === "object" ? s : {};
-  return {expenses:Array.isArray(s.expenses)?s.expenses:[], bills:Array.isArray(s.bills)?s.bills.map(b=>({...b,paid:b.paid||{}})):[], funds:Array.isArray(s.funds)?s.funds.map(f=>({...f,entries:f.entries||[]})):[], activeFund:s.activeFund||null, salary: s.salary && typeof s.salary==="object" ? {a5:Number(s.salary.a5)||0, a20:Number(s.salary.a20)||0, overrides:s.salary.overrides||{}} : null};
+  return {expenses:Array.isArray(s.expenses)?s.expenses:[], bills:Array.isArray(s.bills)?s.bills.map(b=>({...b,paid:b.paid||{}})):[], funds:Array.isArray(s.funds)?s.funds.map(f=>({...f,entries:f.entries||[]})):[], activeFund:s.activeFund||null, salary: s.salary && typeof s.salary==="object" ? {a5:Number(s.salary.a5)||0, a20:Number(s.salary.a20)||0, overrides:s.salary.overrides||{}} : null, trackFrom: /^\d{4}-\d{2}-\d{2}$/.test(s.trackFrom||"") ? s.trackFrom : latest20()};
 }
 try { const raw = localStorage.getItem("bayad-state"); if (raw) S = normalize(JSON.parse(raw)); } catch(e){}
 
@@ -246,6 +259,7 @@ function schedule(until, includePaid){
     const lim = b.kind === "loan" && b.terms ? "9999-12-31" : until;
     for (const due of occurrences(b, lim)){
       if (due > until) break;
+      if (due < S.trackFrom) continue;
       const paid = !!b.paid[due];
       if (!paid || includePaid) items.push({b, due, paid});
     }
@@ -254,9 +268,10 @@ function schedule(until, includePaid){
 }
 function loanInfo(b){
   const all = occurrences(b, "9999-12-31");
-  const paidN = all.filter(d => b.paid[d]).length;
+  const settled = d => d < S.trackFrom || !!b.paid[d];
+  const paidN = all.filter(settled).length;
   const terms = all.length;
-  return {terms, paidN, remaining:(terms-paidN)*Number(b.amount), total:terms*Number(b.amount), last:all[all.length-1], next:all.find(d=>!b.paid[d])};
+  return {terms, paidN, remaining:(terms-paidN)*Number(b.amount), total:terms*Number(b.amount), last:all[all.length-1], next:all.find(d=>!settled(d))};
 }
 function freqText(b){
   if (b.freq === "once") return "One-time, "+fmtDate(b.start);
@@ -314,7 +329,16 @@ function viewHome(){
   const monthEnd = month+"-"+pad(dim(+month.slice(0,4), +month.slice(5)-1));
   const leftThisMonth = schedule(monthEnd,false).filter(x=>x.due.startsWith(month) || x.due < t).reduce((a,x)=>a+Number(x.b.amount),0);
   let h = "";
-  if (next){
+  const group = next ? up.filter(x => next.due < t ? x.due < t : x.due === next.due) : [];
+  if (group.length > 1){
+    const over = next.due < t;
+    const total = group.reduce((a,x)=>a+Number(x.b.amount),0);
+    const title = over ? group.length+" overdue payments" : group.length+" payments due";
+    h += `<div class="stub multi ${over?"over":""}">
+      <div class="hd"><div><div class="when">${over?"Overdue":relDue(next.due)+" · "+fmtDate(next.due)}</div><div class="name">${title}</div></div><div class="amt num">${peso(total)}</div></div>
+      <div class="items">${group.map(x=>`<div class="it"><div class="n">${esc(x.b.name)}<small>${over?fmtDate(x.due)+" · ":""}${x.b.kind==="loan"?"Loan payment":"Bill"}</small></div><span class="num">${peso(x.b.amount)}</span><button data-act="pay" data-id="${x.b.id}" data-due="${x.due}">Pay</button></div>`).join("")}
+      <button class="all" data-act="payAll" data-items="${group.map(x=>x.b.id+"|"+x.due).join(",")}">Mark all ${group.length} paid</button></div></div>`;
+  } else if (next){
     const over = next.due < t;
     h += `<div class="stub ${over?"over":""}" style="--notch:${Math.max(118, peso(next.b.amount).length*17+36)}px">
       <div class="l"><div class="when">${relDue(next.due)} · ${fmtDate(next.due)}</div><div class="name">${esc(next.b.name)}</div><div class="when">${next.b.kind==="loan"?"Loan payment":"Bill"}</div></div>
@@ -340,7 +364,7 @@ function viewHome(){
         <div class="bar"><i style="width:${pct}%"></i></div></div><div class="a num">${peso(L.remaining)}<div class="d" style="text-align:right;font-weight:400">left</div></div></button>`;
     }).join("") + `</div>`;
   }
-  const rest = up.slice(1);
+  const rest = up.filter(x => !group.includes(x));
   h += `<h2>Coming up</h2>`;
   h += rest.length ? `<div class="list">`+rest.map(dueRow).join("")+`</div>` : `<div class="list"><div class="empty-note">${S.bills.length?"Nothing else due in the next 30 days.":"Your upcoming due dates will show here."}</div></div>`;
   return h;
@@ -382,24 +406,24 @@ function viewExp(){
   if (cats.length){
     h += `<h2>By category</h2><div class="list cats">`+cats.map(([c,v])=>`<div class="row"><div class="line1"><span>${esc(c)}</span><span class="num">${peso(v)}</span></div><div class="bar"><i style="width:${v/cats[0][1]*100}%"></i></div></div>`).join("")+`</div>`;
   }
-  h += `<h2>Entries</h2>`;
+  h += `<h2>Entries</h2>${list.length?'<p class="sub" style="margin:-4px 0 8px">Tap an entry to edit or delete it.</p>':""}`;
   if (!list.length) return h + `<div class="list"><div class="empty-note">No expenses logged for ${emptyLabel}. Paying a bill here adds it automatically.</div></div>`;
   h += `<div class="list">`;
   for (const e of list){
-    h += `<div class="row"><div class="grow"><div class="t">${esc(e.note || e.cat)}</div><div class="d">${fmtDate(e.date)} · ${esc(e.cat)}${e.billId?" · from schedule":""}</div></div><div class="a num">${peso(e.amount)}</div><button class="x" data-act="delExp" data-id="${e.id}" aria-label="Delete">×</button></div>`;
+    h += `<button class="row tap" data-act="editExp" data-id="${e.id}"><div class="grow"><div class="t">${esc(e.note || e.cat)}</div><div class="d">${fmtDate(e.date)} · ${esc(e.cat)}${e.billId?" · from schedule":""}</div></div><div class="a num">${peso(e.amount)}</div></button>`;
   }
   return h + `</div>`;
 }
 
 function viewBills(){
-  let h = `<h2>Income</h2><div class="list"><button class="row tap" data-act="salary"><div class="grow"><div class="t">Salary</div><div class="d">${S.salary?"Paid on the 5th and 20th":"Set your pay for the 5th and 20th"}</div></div><div class="a num">${S.salary?peso(S.salary.a5)+" / "+peso(S.salary.a20):"Set"}</div></button></div>`;
+  let h = `<h2>Income</h2><div class="list"><button class="row tap" data-act="salary"><div class="grow"><div class="t">Salary</div><div class="d">${S.salary?"Paid on the 5th and 20th · counting from "+fmtDate(S.trackFrom):"Set your pay for the 5th and 20th"}</div></div><div class="a num">${S.salary?peso(S.salary.a5)+" / "+peso(S.salary.a20):"Set"}</div></button></div>`;
   h += `<div class="head"><h2>Bills &amp; loans</h2><button class="btn primary small" data-act="addBill">Add</button></div>`;
   if (!S.bills.length) return h + `<div class="list"><div class="empty-note">Add a loan with its monthly amortization and number of payments, or a bill like electricity or internet. Each due date is scheduled automatically.</div></div>`;
   const t = TODAY();
   h += `<div class="list">`+[...S.bills].sort((a,b)=>(a.kind===b.kind?0:a.kind==="loan"?-1:1)||a.name.localeCompare(b.name)).map(b=>{
     let extra = "";
     if (b.kind === "loan"){ const L = loanInfo(b); extra = `<div class="d">${L.paidN} of ${L.terms} paid · ${peso(L.remaining)} left</div><div class="bar"><i style="width:${L.terms?L.paidN/L.terms*100:0}%"></i></div>`; }
-    else { const nx = occurrences(b, addDays(t,400)).find(d=>!b.paid[d] ); extra = `<div class="d">${nx?"Next: "+fmtDate(nx):"No upcoming dates"}</div>`; }
+    else { const nx = occurrences(b, addDays(t,400)).find(d=>d >= S.trackFrom && !b.paid[d]); extra = `<div class="d">${nx?"Next: "+fmtDate(nx):"No upcoming dates"}</div>`; }
     return `<button class="row tap" data-act="editBill" data-id="${b.id}"><div class="grow"><div class="t">${esc(b.name)}${b.kind==="loan"?'<span class="tag">loan</span>':""}</div><div class="d">${freqText(b)}</div>${extra}</div><div class="a num">${peso(b.amount)}</div></button>`;
   }).join("")+`</div>`;
   const sched = schedule(addDays(t,60), true).filter(x => !x.paid || x.due >= addDays(t,-31));
@@ -436,10 +460,10 @@ function viewWork(){
     <div class="bar"><i style="width:${pct}%"></i></div>
     ${left<0?`<div class="warn num">Over by ${peso(-left)}. That's your own money covering work costs; claim it back.</div>`:""}
     <div class="actions"><button class="btn primary" data-act="addEntry" data-id="${f.id}">Log where it went</button><button class="btn" data-act="exportFund" data-id="${f.id}">Liquidation (CSV)</button></div></div>`;
-  h += `<h2>Where it went</h2>`;
+  h += `<h2>Where it went</h2>${f.entries.length?'<p class="sub" style="margin:-4px 0 8px">Tap an entry to edit or delete it.</p>':""}`;
   const ents = [...f.entries].sort((a,b)=>b.date.localeCompare(a.date)||(b.ts||0)-(a.ts||0));
   if (!ents.length) return h + `<div class="list"><div class="empty-note">No spending logged against this fund yet.</div></div>`;
-  return h + `<div class="list">`+ents.map(e=>`<div class="row"><div class="grow"><div class="t">${esc(e.purpose)}</div><div class="d">${fmtDate(e.date)}${e.receipt?" · OR# "+esc(e.receipt):" · no receipt"}</div></div><div class="a num">${peso(e.amount)}</div><button class="x" data-act="delEntry" data-fund="${f.id}" data-id="${e.id}" aria-label="Delete">×</button></div>`).join("")+`</div>`;
+  return h + `<div class="list">`+ents.map(e=>`<button class="row tap" data-act="editEntry" data-fund="${f.id}" data-id="${e.id}"><div class="grow"><div class="t">${esc(e.purpose)}</div><div class="d">${fmtDate(e.date)}${e.receipt?" · OR# "+esc(e.receipt):" · no receipt"}</div></div><div class="a num">${peso(e.amount)}</div></button>`).join("")+`</div>`;
 }
 
 function render(){
@@ -494,6 +518,13 @@ function billSheet(b){
   if (!isNew) $("#delBill").onclick = () => { if (confirm("Delete "+b.name+" and its schedule? Expenses already logged stay.")){ S.bills = S.bills.filter(x=>x.id!==b.id); commit(); $("#sheet").close(); toast("Deleted"); } };
 }
 
+function payOne(id, due){
+  const b = S.bills.find(x=>x.id===id); if (!b || b.paid[due]) return false;
+  const eid = uid();
+  b.paid[due] = eid;
+  S.expenses.push({id:eid, ts:Date.now(), date:TODAY(), amount:Number(b.amount), cat:b.cat||(b.kind==="loan"?"Loan":"Bills"), note:b.name+" ("+fmtDate(due)+" due)", billId:b.id, due});
+  return true;
+}
 /* ---------- actions ---------- */
 const A = {
   tab: d => { tab = d.v; render(); window.scrollTo(0,0); },
@@ -506,8 +537,10 @@ const A = {
   salary: () => {
     const s = S.salary || {a5:"", a20:"", overrides:{}};
     openSheet("Salary", `<p class="hint" style="margin:0 0 12px">Your usual take-home pay on each payday. If one payday comes in different (overtime, deductions), use "Adjust this pay" on Home.</p>
-      <div class="two">${field("On the 5th (₱)", `<input name="a5" type="number" inputmode="decimal" step="0.01" min="0" required value="${esc(s.a5)}">`)}${field("On the 20th (₱)", `<input name="a20" type="number" inputmode="decimal" step="0.01" min="0" required value="${esc(s.a20)}">`)}</div>`,
-      "Save salary", fd=>{ S.salary = {a5:Number(fd.a5)||0, a20:Number(fd.a20)||0, overrides:s.overrides||{}}; expCut = null; commit(); toast("Salary saved"); },
+      <div class="two">${field("On the 5th (₱)", `<input name="a5" type="number" inputmode="decimal" step="0.01" min="0" required value="${esc(s.a5)}">`)}${field("On the 20th (₱)", `<input name="a20" type="number" inputmode="decimal" step="0.01" min="0" required value="${esc(s.a20)}">`)}</div>
+      ${field("Start counting from", `<input name="trackFrom" type="date" required value="${esc(S.trackFrom)}">`)}
+      <p class="hint">Bills and loan payments due before this date are treated as already paid, so older months don't show up as overdue.</p>`,
+      "Save salary", fd=>{ S.salary = {a5:Number(fd.a5)||0, a20:Number(fd.a20)||0, overrides:s.overrides||{}}; if (fd.trackFrom) S.trackFrom = fd.trackFrom; expCut = null; commit(); toast("Salary saved"); },
       S.salary ? `<button type="button" class="btn danger left" id="delSal">Remove</button>` : "");
     if (S.salary) $("#delSal").onclick = () => { if (confirm("Remove your salary? Cutoff tracking will turn off.")){ S.salary = null; commit(); $("#sheet").close(); toast("Salary removed"); } };
   },
@@ -520,27 +553,22 @@ const A = {
       `<button type="button" class="btn ghost left" id="resetPay">Use usual</button>`);
     $("#resetPay").onclick = () => { delete S.salary.overrides[d.start]; commit(); $("#sheet").close(); toast("Back to usual amount"); };
   },
-  addExp: () => openSheet("Add expense", `
-    <div class="two">${field("Amount (₱)", `<input name="amount" type="number" inputmode="decimal" step="0.01" min="0.01" required>`)}${field("Category", catSelect("Food"))}</div>
-    ${field("What for", `<input name="note" maxlength="80" placeholder="e.g. Lunch, gas, groceries">`)}
-    ${field("Date", `<input name="date" type="date" required value="${TODAY()}">`)}`, "Add expense", fd=>{
-      S.expenses.push({id:uid(), ts:Date.now(), date:fd.date, amount:Number(fd.amount), cat:fd.cat, note:fd.note.trim()});
-      commit(); toast("Expense added");
-    }),
+  addExp: () => expSheet(null),
+  editExp: d => expSheet(S.expenses.find(x=>x.id===d.id)),
   delExp: d => {
     const e = S.expenses.find(x=>x.id===d.id); if (!e) return;
     if (!confirm("Delete "+(e.note||e.cat)+" ("+peso(e.amount)+")?")) return;
     if (e.billId){ const b = S.bills.find(x=>x.id===e.billId); if (b) delete b.paid[e.due]; }
     S.expenses = S.expenses.filter(x=>x.id!==d.id); commit(); toast("Deleted");
+    return true;
   },
   addBill: () => billSheet(null),
   editBill: d => billSheet(S.bills.find(b=>b.id===d.id)),
-  pay: d => {
-    const b = S.bills.find(x=>x.id===d.id); if (!b) return;
-    const eid = uid();
-    b.paid[d.due] = eid;
-    S.expenses.push({id:eid, ts:Date.now(), date:TODAY(), amount:Number(b.amount), cat:b.cat||(b.kind==="loan"?"Loan":"Bills"), note:b.name+" ("+fmtDate(d.due)+" due)", billId:b.id, due:d.due});
-    commit(); toast("Marked paid and logged as expense");
+  pay: d => { if (payOne(d.id, d.due)){ commit(); toast("Marked paid and logged as expense"); } },
+  payAll: d => {
+    const items = (d.items||"").split(",").filter(Boolean);
+    let n = 0; for (const it of items){ const [id, due] = it.split("|"); if (payOne(id, due)) n++; }
+    if (n){ commit(); toast(n+" payments marked paid"); }
   },
   unpay: d => {
     const b = S.bills.find(x=>x.id===d.id); if (!b) return;
@@ -551,20 +579,13 @@ const A = {
   addFund: () => fundSheet(null),
   editFund: d => fundSheet(S.funds.find(f=>f.id===d.id)),
   pickFund: d => { S.activeFund = d.id; commit(); },
-  addEntry: d => {
-    const f = S.funds.find(x=>x.id===d.id); if (!f) return;
-    openSheet("Log work spending", `
-      <div class="two">${field("Amount (₱)", `<input name="amount" type="number" inputmode="decimal" step="0.01" min="0.01" required>`)}${field("Date", `<input name="date" type="date" required value="${TODAY()}">`)}</div>
-      ${field("Purpose", `<input name="purpose" required maxlength="100" placeholder="e.g. Fuel to Dayap site, field supplies">`)}
-      ${field("Receipt / OR no. (optional)", `<input name="receipt" maxlength="40">`)}`, "Add to fund", fd=>{
-        f.entries.push({id:uid(), ts:Date.now(), date:fd.date, amount:Number(fd.amount), purpose:fd.purpose.trim(), receipt:fd.receipt.trim()});
-        commit(); toast("Logged to "+f.name);
-      });
-  },
+  addEntry: d => entrySheet(S.funds.find(x=>x.id===d.id), null),
+  editEntry: d => { const f = S.funds.find(x=>x.id===d.fund); if (f) entrySheet(f, f.entries.find(x=>x.id===d.id)); },
   delEntry: d => {
     const f = S.funds.find(x=>x.id===d.fund); if (!f) return;
     const e = f.entries.find(x=>x.id===d.id); if (!e || !confirm("Delete "+e.purpose+" ("+peso(e.amount)+")?")) return;
     f.entries = f.entries.filter(x=>x.id!==d.id); commit(); toast("Deleted");
+    return true;
   },
   exportFund: async d => {
     const f = S.funds.find(x=>x.id===d.id); if (!f) return;
@@ -617,6 +638,36 @@ async function saveFile(name, text, mime){
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 4000); return true;
   } catch(err){ return false; }
+}
+function expSheet(e){
+  const isNew = !e;
+  const v = e || {amount:"", cat:"Food", note:"", date:TODAY()};
+  openSheet(isNew?"Add expense":"Edit expense", `
+    <div class="two">${field("Amount (₱)", `<input name="amount" type="number" inputmode="decimal" step="0.01" min="0.01" required value="${esc(v.amount)}">`)}${field("Category", catSelect(v.cat))}</div>
+    ${field("What for", `<input name="note" maxlength="80" placeholder="e.g. Lunch, gas, groceries" value="${esc(v.note)}">`)}
+    ${field("Date", `<input name="date" type="date" required value="${esc(v.date)}">`)}
+    ${e && e.billId ? '<p class="hint">This came from your bill schedule. Deleting it marks that bill unpaid again.</p>' : ""}`,
+    isNew?"Add expense":"Save changes", fd=>{
+      const vals = {date:fd.date, amount:Number(fd.amount), cat:fd.cat, note:fd.note.trim()};
+      if (isNew) S.expenses.push({id:uid(), ts:Date.now(), ...vals}); else Object.assign(e, vals);
+      commit(); toast(isNew?"Expense added":"Changes saved");
+    }, isNew?"":`<button type="button" class="btn danger left" id="delIt">Delete</button>`);
+  if (!isNew) $("#delIt").onclick = () => { if (A.delExp({id:e.id})) $("#sheet").close(); };
+}
+function entrySheet(f, e){
+  if (!f) return;
+  const isNew = !e;
+  const v = e || {amount:"", date:TODAY(), purpose:"", receipt:""};
+  openSheet(isNew?"Log work spending":"Edit entry", `
+    <div class="two">${field("Amount (₱)", `<input name="amount" type="number" inputmode="decimal" step="0.01" min="0.01" required value="${esc(v.amount)}">`)}${field("Date", `<input name="date" type="date" required value="${esc(v.date)}">`)}</div>
+    ${field("Purpose", `<input name="purpose" required maxlength="100" placeholder="e.g. Fuel to Dayap site, field supplies" value="${esc(v.purpose)}">`)}
+    ${field("Receipt / OR no. (optional)", `<input name="receipt" maxlength="40" value="${esc(v.receipt)}">`)}`,
+    isNew?"Add to fund":"Save changes", fd=>{
+      const vals = {date:fd.date, amount:Number(fd.amount), purpose:fd.purpose.trim(), receipt:fd.receipt.trim()};
+      if (isNew) f.entries.push({id:uid(), ts:Date.now(), ...vals}); else Object.assign(e, vals);
+      commit(); toast(isNew?"Logged to "+f.name:"Changes saved");
+    }, isNew?"":`<button type="button" class="btn danger left" id="delIt">Delete</button>`);
+  if (!isNew) $("#delIt").onclick = () => { if (A.delEntry({fund:f.id, id:e.id})) $("#sheet").close(); };
 }
 function fundSheet(f){
   const isNew = !f;
@@ -680,7 +731,7 @@ async function initCloud(){
 render();
 initCloud();
 /* ---------- auto-update: upload a new index.html to GitHub and the phone picks it up ---------- */
-const APP_VERSION = "1.2";
+const APP_VERSION = "1.6";
 let swReg = null;
 if ("serviceWorker" in navigator) window.addEventListener("load", ()=>navigator.serviceWorker.register("sw.js").then(r=>{ swReg = r; }).catch(()=>{}));
 async function checkForUpdate(){
