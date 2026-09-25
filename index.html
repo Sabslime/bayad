@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bayad</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EDF1EA; --surface:#F9FBF7; --ink:#1D3327; --muted:#5C7064; --line:#CAD5CB;
+  --accent:#2F6B4A; --accent-ink:#F4F8F2; --brass:#94661C; --brass-bg:#F3E8D2; --brass-line:#DCC49A;
+  --danger:#AE3F2B; --danger-bg:#F6E1DB; --ok:#2F7A4F;
+  --display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body:"Public Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  color-scheme: light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1C16; --surface:#162820; --ink:#E3ECE5; --muted:#92A79A; --line:#284437;
+    --accent:#72B48E; --accent-ink:#0F1C16; --brass:#DBA852; --brass-bg:#2A2416; --brass-line:#4A3D22;
+    --danger:#E57A63; --danger-bg:#3A1F19; --ok:#72B48E; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1C16; --surface:#162820; --ink:#E3ECE5; --muted:#92A79A; --line:#284437;
+  --accent:#72B48E; --accent-ink:#0F1C16; --brass:#DBA852; --brass-bg:#2A2416; --brass-line:#4A3D22;
+  --danger:#E57A63; --danger-bg:#3A1F19; --ok:#72B48E; color-scheme: dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.5 var(--body);-webkit-font-smoothing:antialiased}
+.num{font-variant-numeric:tabular-nums}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:560px;margin:0 auto;padding:16px 16px 110px}
+header.top{display:flex;align-items:baseline;justify-content:space-between;padding:6px 2px 14px}
+header.top h1{font:700 26px/1 var(--display);letter-spacing:-.02em;margin:0}
+.sync{font-size:12px;color:var(--muted)}
+.hdr-r{display:flex;align-items:center;gap:4px}
+.filebtn{position:relative;overflow:hidden;display:inline-block}
+.filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+h2{font:600 19px/1.2 var(--display);margin:26px 0 10px;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:13px}
+
+/* The stub: next payment as a tear-off bill */
+.stub{display:grid;grid-template-columns:1fr auto;background:var(--accent);color:var(--accent-ink);border-radius:14px;position:relative;overflow:hidden}
+.stub.over{background:var(--danger);color:#fff}
+.stub .l{padding:18px 18px 16px}
+.stub .r{padding:18px 18px 16px 20px;border-left:2px dashed color-mix(in srgb, currentColor 40%, transparent);display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end;text-align:right}
+.stub::before,.stub::after{content:"";position:absolute;width:18px;height:18px;border-radius:50%;background:var(--bg);right:var(--notch,120px);transform:translateX(50%)}
+.stub::before{top:-9px}.stub::after{bottom:-9px}
+.stub .when{font-size:13px;opacity:.85}
+.stub .name{font:600 20px/1.2 var(--display);margin:4px 0 2px}
+.stub .amt{font:700 30px/1 var(--display);letter-spacing:-.02em}
+.stub button{margin-top:14px;background:color-mix(in srgb, currentColor 16%, transparent);border:0;color:inherit;padding:8px 12px;border-radius:8px;font-weight:600;font-size:14px}
+.stub.empty{background:var(--surface);color:var(--ink);border:1px solid var(--line)}
+
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.stat b{display:block;font:600 20px/1.2 var(--display)}
+.stat span{font-size:13px;color:var(--muted)}
+.stats.three{grid-template-columns:repeat(3,1fr)}
+.stats.three .stat b{font-size:16px}
+.flow{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.flow .top{font-size:13px;color:var(--muted);margin-bottom:6px}
+.flow .fl{display:flex;justify-content:space-between;gap:10px;padding:3px 0}
+.flow .fl span{color:var(--muted)}
+.flow .fl.total{border-top:1px solid var(--line);margin-top:8px;padding-top:10px;align-items:baseline}
+.flow .fl.total span{color:var(--ink);font-weight:600}
+.flow .fl.total b{font:700 26px/1 var(--display);letter-spacing:-.02em}
+.flow .foot{font-size:13px;color:var(--muted);margin-top:10px}
+.neg{color:var(--danger)}
+.toggle{display:inline-grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.toggle button{border:0;background:none;padding:6px 12px;font-weight:600;font-size:13px;color:var(--muted)}
+.toggle button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+
+.list{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.row{display:flex;align-items:center;gap:12px;padding:12px 14px;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.row .grow{flex:1;min-width:0}
+.row .t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .d{font-size:13px;color:var(--muted)}
+.row .d.over{color:var(--danger);font-weight:600}
+.row .a{font-weight:600;white-space:nowrap}
+.row.paid .t,.row.paid .a{color:var(--muted);text-decoration:line-through}
+.row.tap{cursor:pointer;width:100%;text-align:left;background:none;border-left:0;border-right:0;border-bottom:0}
+.empty-note{padding:18px 14px;color:var(--muted);font-size:14px}
+
+.btn{border:1px solid var(--line);background:var(--surface);padding:8px 12px;border-radius:8px;font-weight:600;font-size:14px}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.small{padding:5px 10px;font-size:13px}
+.btn.ghost{background:none;border-color:transparent;color:var(--muted)}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.x{border:0;background:none;color:var(--muted);font-size:20px;line-height:1;padding:4px 6px;border-radius:6px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.head h2{margin-bottom:10px}
+
+.bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:3px}
+.tag{display:inline-block;font-size:12px;padding:1px 7px;border-radius:5px;background:var(--bg);color:var(--muted);margin-left:6px;vertical-align:1px;font-weight:500}
+
+.monthnav{display:flex;align-items:center;justify-content:space-between;margin:4px 0 12px}
+.monthnav b{font:600 19px var(--display)}
+.cats .row{display:block}
+.cats .row .line1{display:flex;justify-content:space-between;font-size:14px}
+
+/* Work fund: its own paper, kept apart */
+.fund{background:var(--brass-bg);border:1px solid var(--brass-line);border-radius:14px;padding:16px 18px}
+.fund .lbl{font-size:13px;color:var(--brass);font-weight:600}
+.fund .big{font:700 32px/1.1 var(--display);letter-spacing:-.02em;margin:4px 0 2px}
+.fund .bar{background:color-mix(in srgb, var(--brass) 22%, transparent)}
+.fund .bar i{background:var(--brass)}
+.fund .warn{color:var(--danger);font-weight:600;font-size:14px;margin-top:8px}
+.fund .btn.primary{background:var(--brass);border-color:var(--brass);color:var(--brass-bg)}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:12px}
+.chip{border:1px solid var(--brass-line);background:var(--surface);padding:6px 12px;border-radius:999px;white-space:nowrap;font-size:14px}
+.chip[aria-pressed="true"]{background:var(--brass);color:var(--brass-bg);border-color:var(--brass);font-weight:600}
+.worknote{font-size:13px;color:var(--muted);margin:0 0 12px}
+
+nav.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px);z-index:5}
+nav.tabs .in{max-width:560px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr)}
+nav.tabs button{background:none;border:0;padding:10px 4px 12px;font-size:13px;color:var(--muted);font-weight:500;display:flex;flex-direction:column;align-items:center;gap:3px}
+nav.tabs button svg{width:22px;height:22px}
+nav.tabs button[aria-current="page"]{color:var(--accent);font-weight:600}
+nav.tabs button.work[aria-current="page"]{color:var(--brass)}
+
+dialog{border:0;border-radius:16px 16px 0 0;padding:0;width:100%;max-width:560px;margin:auto auto 0;background:var(--surface);color:var(--ink);max-height:90vh}
+dialog::backdrop{background:rgba(10,20,15,.45)}
+dialog form{padding:20px 18px calc(18px + env(safe-area-inset-bottom,0px))}
+dialog h3{font:600 20px var(--display);margin:0 0 14px}
+.field{display:block;margin-bottom:12px}
+.field span{display:block;font-size:13px;color:var(--muted);margin-bottom:4px;font-weight:500}
+.field input,.field select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-size:16px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:12px}
+.seg label{text-align:center;padding:9px;cursor:pointer;font-weight:600;font-size:14px}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label:has(input:checked){background:var(--accent);color:var(--accent-ink)}
+.formrow{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.formrow .left{margin-right:auto}
+.hint{font-size:13px;color:var(--muted);margin:-4px 0 12px}
+.update{position:fixed;left:12px;right:12px;top:calc(10px + env(safe-area-inset-top,0px));max-width:536px;margin:0 auto;background:var(--ink);color:var(--bg);border-radius:10px;padding:10px 12px 10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;z-index:30;font-size:14px}
+.update button{background:var(--accent);color:var(--accent-ink);border:0;border-radius:7px;padding:7px 12px;font-weight:600}
+.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 14px;border-radius:8px;font-size:14px;z-index:20;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+@media (prefers-reduced-motion: reduce){.toast{transition:none}}
+</style>
+<meta name="bayad-version" content="1.2">
+<meta name="theme-color" content="#2F6B4A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Bayad">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+</head>
+<body>
+<div class="wrap">
+  <header class="top"><h1><span aria-hidden="true" style="font-size:.9em;margin-right:6px">🐷</span>Bayad</h1><div class="hdr-r"><span class="sync" id="sync">Saved on this phone</span><button class="btn small ghost" data-act="backup">Backup</button></div></header>
+  <main id="main"></main>
+</div>
+<nav class="tabs" aria-label="Sections"><div class="in">
+  <button data-act="tab" data-v="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11l8-7 8 7v9H4z"/><path d="M10 20v-5h4v5"/></svg>Home</button>
+  <button data-act="tab" data-v="exp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>Expenses</button>
+  <button data-act="tab" data-v="bills"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Bills &amp; loans</button>
+  <button data-act="tab" data-v="work" class="work"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5h6v2M3 12h18"/></svg>Work fund</button>
+</div></nav>
+<dialog id="sheet"><form id="sheetForm"></form></dialog>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const peso = n => "₱" + (Number(n)||0).toLocaleString("en-PH",{minimumFractionDigits:2,maximumFractionDigits:2});
+const pad = n => String(n).padStart(2,"0");
+const ymd = d => d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+const parse = s => { const [y,m,d] = s.split("-").map(Number); return new Date(y,m-1,d); };
+const dim = (y,m) => new Date(y,m+1,0).getDate();
+const addDays = (s,n) => { const d = parse(s); d.setDate(d.getDate()+n); return ymd(d); };
+const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const TODAY = () => ymd(new Date());
+const fmtDate = s => parse(s).toLocaleDateString("en-PH",{month:"short",day:"numeric"});
+const fmtMonth = ym => parse(ym+"-01").toLocaleDateString("en-PH",{month:"long",year:"numeric"});
+const daysBetween = (a,b) => Math.round((parse(b)-parse(a))/86400000);
+function relDue(s){
+  const n = daysBetween(TODAY(), s);
+  if (n === 0) return "Due today";
+  if (n === 1) return "Due tomorrow";
+  if (n > 1) return "Due in "+n+" days";
+  return (-n)+(n===-1?" day":" days")+" overdue";
+}
+function ordinal(n){ const s=["th","st","nd","rd"], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); }
+const CATS = ["Food","Transport","Bills","Loan","Household","Load & internet","Health","Personal","Other"];
+const WEEKDAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+
+/* ---------- state ---------- */
+let S = {expenses:[], bills:[], funds:[], activeFund:null};
+let tab = "home";
+let expMonth = TODAY().slice(0,7);
+let expMode = "cut";
+let expCut = null;
+function normalize(s){
+  s = s && typeof s === "object" ? s : {};
+  return {expenses:Array.isArray(s.expenses)?s.expenses:[], bills:Array.isArray(s.bills)?s.bills.map(b=>({...b,paid:b.paid||{}})):[], funds:Array.isArray(s.funds)?s.funds.map(f=>({...f,entries:f.entries||[]})):[], activeFund:s.activeFund||null, salary: s.salary && typeof s.salary==="object" ? {a5:Number(s.salary.a5)||0, a20:Number(s.salary.a20)||0, overrides:s.salary.overrides||{}} : null};
+}
+try { const raw = localStorage.getItem("bayad-state"); if (raw) S = normalize(JSON.parse(raw)); } catch(e){}
+
+/* ---------- scheduling ---------- */
+function occurrences(b, until){
+  const out = [];
+  const max = b.kind === "loan" && b.terms ? Number(b.terms) : Infinity;
+  const s = parse(b.start);
+  if (b.freq === "once") return b.start <= until ? [b.start] : [];
+  if (b.freq === "weekly"){
+    let d = b.start, i = 0;
+    while (d <= until && out.length < max && i++ < 800){ out.push(d); d = addDays(d,7); }
+    return out;
+  }
+  const days = b.freq === "semi" ? [Number(b.day), Number(b.day2)].filter(Boolean).sort((a,c)=>a-c) : [Number(b.day) || s.getDate()];
+  for (let i = 0; i < 400; i++){
+    const base = new Date(s.getFullYear(), s.getMonth()+i, 1);
+    const y = base.getFullYear(), m = base.getMonth();
+    let stop = false;
+    for (const dd of [...new Set(days)]){
+      const date = ymd(new Date(y, m, Math.min(dd, dim(y,m))));
+      if (date < b.start) continue;
+      if (date > until || out.length >= max){ stop = true; break; }
+      out.push(date);
+    }
+    if (stop) break;
+  }
+  return out;
+}
+function schedule(until, includePaid){
+  const items = [];
+  for (const b of S.bills){
+    const lim = b.kind === "loan" && b.terms ? "9999-12-31" : until;
+    for (const due of occurrences(b, lim)){
+      if (due > until) break;
+      const paid = !!b.paid[due];
+      if (!paid || includePaid) items.push({b, due, paid});
+    }
+  }
+  return items.sort((x,y)=> x.due.localeCompare(y.due) || x.b.name.localeCompare(y.b.name));
+}
+function loanInfo(b){
+  const all = occurrences(b, "9999-12-31");
+  const paidN = all.filter(d => b.paid[d]).length;
+  const terms = all.length;
+  return {terms, paidN, remaining:(terms-paidN)*Number(b.amount), total:terms*Number(b.amount), last:all[all.length-1], next:all.find(d=>!b.paid[d])};
+}
+function freqText(b){
+  if (b.freq === "once") return "One-time, "+fmtDate(b.start);
+  if (b.freq === "weekly") return "Every "+WEEKDAYS[parse(b.start).getDay()];
+  if (b.freq === "semi") return "Twice a month, "+ordinal(b.day)+" & "+ordinal(b.day2);
+  return "Monthly on the "+ordinal(b.day || parse(b.start).getDate());
+}
+
+/* ---------- paydays: 5th and 20th ---------- */
+function periodOf(s){
+  const d = parse(s), y = d.getFullYear(), m = d.getMonth(), day = d.getDate();
+  const start = day >= 20 ? new Date(y,m,20) : day >= 5 ? new Date(y,m,5) : new Date(y,m-1,20);
+  const end = start.getDate() === 5 ? new Date(start.getFullYear(), start.getMonth(), 19) : new Date(start.getFullYear(), start.getMonth()+1, 4);
+  return {start:ymd(start), end:ymd(end)};
+}
+const nextPeriod = p => periodOf(addDays(p.end,1));
+const prevPeriod = p => periodOf(addDays(p.start,-1));
+const payLabel = p => ordinal(parse(p.start).getDate())+" pay";
+const rangeLabel = p => fmtDate(p.start)+" to "+fmtDate(p.end);
+function payAmt(start){
+  if (!S.salary) return 0;
+  const o = S.salary.overrides[start];
+  if (o !== undefined && o !== null && o !== "") return Number(o);
+  return parse(start).getDate() === 5 ? S.salary.a5 : S.salary.a20;
+}
+function flow(p, current){
+  const salary = payAmt(p.start);
+  const spent = S.expenses.filter(e=>e.date>=p.start && e.date<=p.end).reduce((a,e)=>a+Number(e.amount),0);
+  const dueItems = schedule(p.end,false).filter(x => current || x.due >= p.start);
+  const due = dueItems.reduce((a,x)=>a+Number(x.b.amount),0);
+  return {salary, spent, due, dueN:dueItems.length, left: salary - spent - due, adjusted: S.salary && S.salary.overrides[p.start] !== undefined};
+}
+function flowCard(){
+  const t = TODAY(), p = periodOf(t), f = flow(p, true), np = nextPeriod(p), nf = flow(np, false);
+  const used = f.salary ? Math.min(100, (f.spent+f.due)/f.salary*100) : 0;
+  const days = daysBetween(t, np.start);
+  return `<div class="head"><h2>This cutoff</h2><button class="btn small ghost" data-act="salary">Edit salary</button></div>
+  <div class="flow"><div class="top">${payLabel(p)}, ${rangeLabel(p)}</div>
+    <div class="fl"><span>Salary in${f.adjusted?" (adjusted)":""}</span><b class="num">${peso(f.salary)}</b></div>
+    <div class="fl"><span>Spent so far</span><b class="num">−${peso(f.spent)}</b></div>
+    <div class="fl"><span>Bills still due${f.dueN?" ("+f.dueN+")":""}</span><b class="num">−${peso(f.due)}</b></div>
+    <div class="fl total"><span>Left after bills</span><b class="num ${f.left<0?"neg":""}">${f.left<0?"−":""}${peso(Math.abs(f.left))}</b></div>
+    <div class="bar"><i style="width:${used}%;${f.left<0?"background:var(--danger)":""}"></i></div>
+    <div class="foot">Next payday ${fmtDate(np.start)}, ${days===1?"tomorrow":"in "+days+" days"}. <button class="btn small ghost" style="padding:2px 4px" data-act="adjustPay" data-start="${p.start}">Adjust this pay</button></div>
+  </div>
+  <div class="list" style="margin-top:10px"><div class="row"><div class="grow"><div class="t">Next cutoff</div><div class="d">${payLabel(np)}, ${rangeLabel(np)} · ${peso(nf.salary)} in, ${peso(nf.due)} bills</div></div><div class="a num ${nf.left<0?"neg":""}">${nf.left<0?"−":""}${peso(Math.abs(nf.left))}<div class="d" style="text-align:right;font-weight:400">left</div></div></div></div>`;
+}
+
+/* ---------- views ---------- */
+function viewHome(){
+  const t = TODAY(), month = t.slice(0,7);
+  const up = schedule(addDays(t,30), false);
+  const next = up[0];
+  const spent = S.expenses.filter(e=>e.date.startsWith(month)).reduce((a,e)=>a+Number(e.amount),0);
+  const monthEnd = month+"-"+pad(dim(+month.slice(0,4), +month.slice(5)-1));
+  const leftThisMonth = schedule(monthEnd,false).filter(x=>x.due.startsWith(month) || x.due < t).reduce((a,x)=>a+Number(x.b.amount),0);
+  let h = "";
+  if (next){
+    const over = next.due < t;
+    h += `<div class="stub ${over?"over":""}" style="--notch:${Math.max(118, peso(next.b.amount).length*17+36)}px">
+      <div class="l"><div class="when">${relDue(next.due)} · ${fmtDate(next.due)}</div><div class="name">${esc(next.b.name)}</div><div class="when">${next.b.kind==="loan"?"Loan payment":"Bill"}</div></div>
+      <div class="r"><div class="amt num">${peso(next.b.amount)}</div><button data-act="pay" data-id="${next.b.id}" data-due="${next.due}">Mark paid</button></div></div>`;
+  } else if (!S.bills.length){
+    h += `<div class="stub empty"><div class="l"><div class="name">No bills scheduled yet</div><div class="when">Add your loan and regular bills once. Bayad lays out every due date for you.</div><div class="actions"><button class="btn primary" data-act="addBill">Add a bill or loan</button></div></div></div>`;
+  } else {
+    h += `<div class="stub empty"><div class="l"><div class="name">All clear for 30 days</div><div class="when">Nothing unpaid is due before ${fmtDate(addDays(t,30))}.</div></div></div>`;
+  }
+  h += `<div class="actions"><button class="btn primary" data-act="addExp">Add expense</button><button class="btn" data-act="addBill">Add bill or loan</button></div>`;
+  if (S.salary) h += flowCard();
+  else {
+    h += `<div class="stats"><div class="stat"><span>Spent in ${parse(t).toLocaleDateString("en-PH",{month:"long"})}</span><b class="num">${peso(spent)}</b></div><div class="stat"><span>Still to pay this month</span><b class="num">${peso(leftThisMonth)}</b></div></div>`;
+    h += `<div class="flow" style="margin-top:12px"><b>Add your salary</b><div class="sub" style="margin:4px 0 10px">Enter your pay on the 5th and 20th to see what's left each cutoff after bills and spending.</div><button class="btn primary small" data-act="salary">Set salary</button></div>`;
+  }
+
+  const loans = S.bills.filter(b=>b.kind==="loan");
+  if (loans.length){
+    h += `<h2>Loans</h2><div class="list">` + loans.map(b=>{
+      const L = loanInfo(b); const pct = L.terms ? L.paidN/L.terms*100 : 0;
+      return `<button class="row tap" data-act="editBill" data-id="${b.id}"><div class="grow"><div class="t">${esc(b.name)}</div>
+        <div class="d">${L.paidN} of ${L.terms} paid${L.next?" · next "+fmtDate(L.next):" · fully paid"}${L.last?" · ends "+parse(L.last).toLocaleDateString("en-PH",{month:"short",year:"numeric"}):""}</div>
+        <div class="bar"><i style="width:${pct}%"></i></div></div><div class="a num">${peso(L.remaining)}<div class="d" style="text-align:right;font-weight:400">left</div></div></button>`;
+    }).join("") + `</div>`;
+  }
+  const rest = up.slice(1);
+  h += `<h2>Coming up</h2>`;
+  h += rest.length ? `<div class="list">`+rest.map(dueRow).join("")+`</div>` : `<div class="list"><div class="empty-note">${S.bills.length?"Nothing else due in the next 30 days.":"Your upcoming due dates will show here."}</div></div>`;
+  return h;
+}
+function dueRow(x){
+  const over = !x.paid && x.due < TODAY();
+  return `<div class="row ${x.paid?"paid":""}"><div class="grow"><div class="t">${esc(x.b.name)}${x.b.kind==="loan"?'<span class="tag">loan</span>':""}</div>
+    <div class="d ${over?"over":""}">${fmtDate(x.due)} · ${x.paid?"Paid":relDue(x.due)}</div></div>
+    <div class="a num">${peso(x.b.amount)}</div>
+    ${x.paid?`<button class="btn small ghost" data-act="unpay" data-id="${x.b.id}" data-due="${x.due}">Undo</button>`:`<button class="btn small" data-act="pay" data-id="${x.b.id}" data-due="${x.due}">Pay</button>`}</div>`;
+}
+
+function viewExp(){
+  const cut = S.salary && expMode === "cut";
+  let p = null, inRange, label, emptyLabel;
+  if (cut){
+    p = periodOf(expCut || TODAY());
+    inRange = e => e.date >= p.start && e.date <= p.end;
+    label = payLabel(p)+", "+rangeLabel(p); emptyLabel = "this cutoff";
+  } else {
+    inRange = e => e.date.startsWith(expMonth);
+    label = fmtMonth(expMonth); emptyLabel = fmtMonth(expMonth);
+  }
+  const list = S.expenses.filter(inRange).sort((a,b)=>b.date.localeCompare(a.date) || (b.ts||0)-(a.ts||0));
+  const total = list.reduce((a,e)=>a+Number(e.amount),0);
+  const byCat = {};
+  list.forEach(e=>byCat[e.cat]=(byCat[e.cat]||0)+Number(e.amount));
+  const cats = Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
+  let h = "";
+  if (S.salary) h += `<div style="display:flex;justify-content:center;margin-bottom:10px"><div class="toggle" role="group" aria-label="View by"><button data-act="expMode" data-v="cut" aria-pressed="${cut}">By cutoff</button><button data-act="expMode" data-v="month" aria-pressed="${!cut}">By month</button></div></div>`;
+  h += `<div class="monthnav"><button class="btn small" data-act="month" data-v="-1" aria-label="Previous">‹</button><b style="font-size:${cut?16:19}px;text-align:center">${label}</b><button class="btn small" data-act="month" data-v="1" aria-label="Next">›</button></div>`;
+  if (cut){
+    const sal = payAmt(p.start), left = sal - total;
+    h += `<div class="stats three"><div class="stat"><span>Salary</span><b class="num">${peso(sal)}</b></div><div class="stat"><span>Spent</span><b class="num">${peso(total)}</b></div><div class="stat"><span>Left</span><b class="num ${left<0?"neg":""}">${left<0?"−":""}${peso(Math.abs(left))}</b></div></div>`;
+  } else {
+    h += `<div class="stats"><div class="stat"><span>Total spent</span><b class="num">${peso(total)}</b></div><div class="stat"><span>Entries</span><b class="num">${list.length}</b></div></div>`;
+  }
+  h += `<div class="actions"><button class="btn primary" data-act="addExp">Add expense</button></div>`;
+  if (cats.length){
+    h += `<h2>By category</h2><div class="list cats">`+cats.map(([c,v])=>`<div class="row"><div class="line1"><span>${esc(c)}</span><span class="num">${peso(v)}</span></div><div class="bar"><i style="width:${v/cats[0][1]*100}%"></i></div></div>`).join("")+`</div>`;
+  }
+  h += `<h2>Entries</h2>`;
+  if (!list.length) return h + `<div class="list"><div class="empty-note">No expenses logged for ${emptyLabel}. Paying a bill here adds it automatically.</div></div>`;
+  h += `<div class="list">`;
+  for (const e of list){
+    h += `<div class="row"><div class="grow"><div class="t">${esc(e.note || e.cat)}</div><div class="d">${fmtDate(e.date)} · ${esc(e.cat)}${e.billId?" · from schedule":""}</div></div><div class="a num">${peso(e.amount)}</div><button class="x" data-act="delExp" data-id="${e.id}" aria-label="Delete">×</button></div>`;
+  }
+  return h + `</div>`;
+}
+
+function viewBills(){
+  let h = `<h2>Income</h2><div class="list"><button class="row tap" data-act="salary"><div class="grow"><div class="t">Salary</div><div class="d">${S.salary?"Paid on the 5th and 20th":"Set your pay for the 5th and 20th"}</div></div><div class="a num">${S.salary?peso(S.salary.a5)+" / "+peso(S.salary.a20):"Set"}</div></button></div>`;
+  h += `<div class="head"><h2>Bills &amp; loans</h2><button class="btn primary small" data-act="addBill">Add</button></div>`;
+  if (!S.bills.length) return h + `<div class="list"><div class="empty-note">Add a loan with its monthly amortization and number of payments, or a bill like electricity or internet. Each due date is scheduled automatically.</div></div>`;
+  const t = TODAY();
+  h += `<div class="list">`+[...S.bills].sort((a,b)=>(a.kind===b.kind?0:a.kind==="loan"?-1:1)||a.name.localeCompare(b.name)).map(b=>{
+    let extra = "";
+    if (b.kind === "loan"){ const L = loanInfo(b); extra = `<div class="d">${L.paidN} of ${L.terms} paid · ${peso(L.remaining)} left</div><div class="bar"><i style="width:${L.terms?L.paidN/L.terms*100:0}%"></i></div>`; }
+    else { const nx = occurrences(b, addDays(t,400)).find(d=>!b.paid[d] ); extra = `<div class="d">${nx?"Next: "+fmtDate(nx):"No upcoming dates"}</div>`; }
+    return `<button class="row tap" data-act="editBill" data-id="${b.id}"><div class="grow"><div class="t">${esc(b.name)}${b.kind==="loan"?'<span class="tag">loan</span>':""}</div><div class="d">${freqText(b)}</div>${extra}</div><div class="a num">${peso(b.amount)}</div></button>`;
+  }).join("")+`</div>`;
+  const sched = schedule(addDays(t,60), true).filter(x => !x.paid || x.due >= addDays(t,-31));
+  h += `<h2>Schedule, next 60 days</h2>${S.salary?`<p class="sub" style="margin:-4px 0 6px">Grouped by the paycheck that covers each bill.</p>`:""}`;
+  if (!sched.length) return h + `<div class="list"><div class="empty-note">No due dates in this window.</div></div>`;
+  const groups = {};
+  const starts = {};
+  sched.forEach(x=>{
+    let k;
+    if (x.due < t && !x.paid) k = "Overdue";
+    else if (S.salary){ const p = periodOf(x.due); k = payLabel(p)+", "+rangeLabel(p); starts[k] = p.start; }
+    else k = fmtMonth(x.due.slice(0,7));
+    (groups[k]=groups[k]||[]).push(x);
+  });
+  for (const [k,items] of Object.entries(groups)){
+    const sum = items.filter(x=>!x.paid).reduce((a,x)=>a+Number(x.b.amount),0);
+    const right = starts[k] ? `${peso(sum)} due of ${peso(payAmt(starts[k]))}` : `${peso(sum)} unpaid`;
+    h += `<div class="head" style="margin:14px 2px 6px"><b style="font-weight:600">${k}</b><span class="sub num">${right}</span></div><div class="list">`+items.map(dueRow).join("")+`</div>`;
+  }
+  return h;
+}
+
+function viewWork(){
+  let h = `<div class="head"><h2>Work fund</h2><button class="btn small" data-act="addFund">New fund</button></div>
+    <p class="worknote">Kept separate from your personal money. Nothing here counts toward your expenses or bills.</p>`;
+  if (!S.funds.length) return h + `<div class="fund"><div class="lbl">No work fund yet</div><p style="margin:6px 0 0">Record money your office handed you, like a ₱5,000 cash advance, then log where every peso went for liquidation.</p><div class="actions"><button class="btn primary" data-act="addFund">Add work fund</button></div></div>`;
+  let f = S.funds.find(x=>x.id===S.activeFund) || S.funds[S.funds.length-1];
+  if (S.funds.length > 1) h += `<div class="chips">`+S.funds.map(x=>`<button class="chip" data-act="pickFund" data-id="${x.id}" aria-pressed="${x.id===f.id}">${esc(x.name)}</button>`).join("")+`</div>`;
+  const spent = f.entries.reduce((a,e)=>a+Number(e.amount),0);
+  const left = Number(f.amount) - spent;
+  const pct = f.amount ? Math.min(100, spent/f.amount*100) : 0;
+  h += `<div class="fund"><div class="head"><div class="lbl">${esc(f.name)} · received ${fmtDate(f.date)}</div><button class="btn small ghost" data-act="editFund" data-id="${f.id}">Edit</button></div>
+    <div class="big num">${peso(Math.max(0,left))}</div><div class="sub num">remaining · ${peso(spent)} used of ${peso(f.amount)}</div>
+    <div class="bar"><i style="width:${pct}%"></i></div>
+    ${left<0?`<div class="warn num">Over by ${peso(-left)}. That's your own money covering work costs; claim it back.</div>`:""}
+    <div class="actions"><button class="btn primary" data-act="addEntry" data-id="${f.id}">Log where it went</button><button class="btn" data-act="exportFund" data-id="${f.id}">Liquidation (CSV)</button></div></div>`;
+  h += `<h2>Where it went</h2>`;
+  const ents = [...f.entries].sort((a,b)=>b.date.localeCompare(a.date)||(b.ts||0)-(a.ts||0));
+  if (!ents.length) return h + `<div class="list"><div class="empty-note">No spending logged against this fund yet.</div></div>`;
+  return h + `<div class="list">`+ents.map(e=>`<div class="row"><div class="grow"><div class="t">${esc(e.purpose)}</div><div class="d">${fmtDate(e.date)}${e.receipt?" · OR# "+esc(e.receipt):" · no receipt"}</div></div><div class="a num">${peso(e.amount)}</div><button class="x" data-act="delEntry" data-fund="${f.id}" data-id="${e.id}" aria-label="Delete">×</button></div>`).join("")+`</div>`;
+}
+
+function render(){
+  const v = {home:viewHome, exp:viewExp, bills:viewBills, work:viewWork}[tab];
+  $("#main").innerHTML = v();
+  document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-current", b.dataset.v===tab?"page":"false"));
+}
+
+/* ---------- sheet ---------- */
+let onSheetSubmit = null;
+function openSheet(title, body, submitLabel, onSubmit, extraLeft=""){
+  $("#sheetForm").innerHTML = `<h3>${title}</h3>${body}<div class="formrow">${extraLeft}<button type="button" class="btn ghost" data-close>Cancel</button><button type="submit" class="btn primary">${submitLabel}</button></div>`;
+  onSheetSubmit = onSubmit;
+  $("#sheet").showModal();
+  const first = $("#sheetForm").querySelector("input:not([type=radio]),select");
+  if (first) setTimeout(()=>first.focus(), 50);
+}
+$("#sheetForm").addEventListener("submit", e=>{
+  e.preventDefault();
+  const fd = Object.fromEntries(new FormData(e.target));
+  if (onSheetSubmit && onSheetSubmit(fd) !== false) $("#sheet").close();
+});
+$("#sheetForm").addEventListener("click", e=>{ if (e.target.closest("[data-close]")) $("#sheet").close(); });
+$("#sheet").addEventListener("click", e=>{ if (e.target === $("#sheet")) $("#sheet").close(); });
+
+const field = (label, html) => `<label class="field"><span>${label}</span>${html}</label>`;
+const catSelect = (sel) => `<select name="cat">${CATS.map(c=>`<option ${c===sel?"selected":""}>${c}</option>`).join("")}</select>`;
+
+function billSheet(b){
+  const isNew = !b;
+  b = b || {kind:"bill", freq:"monthly", start:TODAY(), amount:"", name:"", terms:"", cat:"Bills"};
+  const body = `
+    <div class="seg" role="radiogroup"><label><input type="radio" name="kind" value="bill" ${b.kind!=="loan"?"checked":""}>Bill</label><label><input type="radio" name="kind" value="loan" ${b.kind==="loan"?"checked":""}>Loan</label></div>
+    ${field("Name", `<input name="name" required maxlength="60" value="${esc(b.name)}" placeholder="e.g. Meralco, Home Credit">`)}
+    <div class="two">${field("Amount per payment (₱)", `<input name="amount" type="number" inputmode="decimal" step="0.01" min="0.01" required value="${esc(b.amount)}">`)}
+    ${field("How often", `<select name="freq">${[["monthly","Monthly"],["semi","Twice a month"],["weekly","Weekly"],["once","One-time"]].map(([v,l])=>`<option value="${v}" ${b.freq===v?"selected":""}>${l}</option>`).join("")}</select>`)}</div>
+    ${field("First due date", `<input name="start" type="date" required value="${esc(b.start)}">`)}
+    <div class="two" id="semiRow">${field("First day of month", `<input name="day" type="number" min="1" max="31" value="${esc(b.day||15)}">`)}${field("Second day", `<input name="day2" type="number" min="1" max="31" value="${esc(b.day2||30)}">`)}</div>
+    <div id="loanRow">${field("Number of payments", `<input name="terms" type="number" min="1" max="600" value="${esc(b.terms)}" placeholder="e.g. 24">`)}<p class="hint">Count only what's left if some are already paid, and set the first due date to your next payment.</p></div>`;
+  const del = isNew ? "" : `<button type="button" class="btn danger left" id="delBill">Delete</button>`;
+  openSheet(isNew?"Add bill or loan":"Edit "+esc(b.name), body, isNew?"Add to schedule":"Save changes", fd=>{
+    const nb = {...(isNew?{id:uid(), paid:{}}:b), name:fd.name.trim(), kind:fd.kind, amount:Number(fd.amount), freq:fd.freq, start:fd.start,
+      cat: fd.kind==="loan"?"Loan":"Bills", terms: fd.kind==="loan" ? (Number(fd.terms)||null) : null};
+    if (fd.freq==="monthly") nb.day = parse(fd.start).getDate();
+    if (fd.freq==="semi"){ nb.day = Number(fd.day)||15; nb.day2 = Number(fd.day2)||30; if (nb.day===nb.day2){ toast("Pick two different days"); return false; } }
+    if (isNew) S.bills.push(nb); else Object.assign(b, nb);
+    commit(); toast(isNew ? "Added to schedule" : "Changes saved");
+  }, del);
+  const f = $("#sheetForm");
+  const sync = () => { const fd = new FormData(f); $("#semiRow").style.display = fd.get("freq")==="semi"?"":"none"; $("#loanRow").style.display = fd.get("kind")==="loan"?"":"none"; };
+  f.addEventListener("change", sync); sync();
+  if (!isNew) $("#delBill").onclick = () => { if (confirm("Delete "+b.name+" and its schedule? Expenses already logged stay.")){ S.bills = S.bills.filter(x=>x.id!==b.id); commit(); $("#sheet").close(); toast("Deleted"); } };
+}
+
+/* ---------- actions ---------- */
+const A = {
+  tab: d => { tab = d.v; render(); window.scrollTo(0,0); },
+  month: d => {
+    if (S.salary && expMode === "cut"){ const p = periodOf(expCut || TODAY()); expCut = (Number(d.v) > 0 ? nextPeriod(p) : prevPeriod(p)).start; }
+    else { const [y,m] = expMonth.split("-").map(Number); expMonth = ymd(new Date(y, m-1+Number(d.v), 1)).slice(0,7); }
+    render();
+  },
+  expMode: d => { expMode = d.v; render(); },
+  salary: () => {
+    const s = S.salary || {a5:"", a20:"", overrides:{}};
+    openSheet("Salary", `<p class="hint" style="margin:0 0 12px">Your usual take-home pay on each payday. If one payday comes in different (overtime, deductions), use "Adjust this pay" on Home.</p>
+      <div class="two">${field("On the 5th (₱)", `<input name="a5" type="number" inputmode="decimal" step="0.01" min="0" required value="${esc(s.a5)}">`)}${field("On the 20th (₱)", `<input name="a20" type="number" inputmode="decimal" step="0.01" min="0" required value="${esc(s.a20)}">`)}</div>`,
+      "Save salary", fd=>{ S.salary = {a5:Number(fd.a5)||0, a20:Number(fd.a20)||0, overrides:s.overrides||{}}; expCut = null; commit(); toast("Salary saved"); },
+      S.salary ? `<button type="button" class="btn danger left" id="delSal">Remove</button>` : "");
+    if (S.salary) $("#delSal").onclick = () => { if (confirm("Remove your salary? Cutoff tracking will turn off.")){ S.salary = null; commit(); $("#sheet").close(); toast("Salary removed"); } };
+  },
+  adjustPay: d => {
+    if (!S.salary) return;
+    const usual = parse(d.start).getDate() === 5 ? S.salary.a5 : S.salary.a20;
+    openSheet(fmtDate(d.start)+" pay", `<p class="hint" style="margin:0 0 12px">Usual amount is ${peso(usual)}. Change it only for this payday.</p>
+      ${field("Amount received (₱)", `<input name="amt" type="number" inputmode="decimal" step="0.01" min="0" required value="${esc(payAmt(d.start))}">`)}`,
+      "Save", fd=>{ S.salary.overrides[d.start] = Number(fd.amt)||0; commit(); toast("Payday updated"); },
+      `<button type="button" class="btn ghost left" id="resetPay">Use usual</button>`);
+    $("#resetPay").onclick = () => { delete S.salary.overrides[d.start]; commit(); $("#sheet").close(); toast("Back to usual amount"); };
+  },
+  addExp: () => openSheet("Add expense", `
+    <div class="two">${field("Amount (₱)", `<input name="amount" type="number" inputmode="decimal" step="0.01" min="0.01" required>`)}${field("Category", catSelect("Food"))}</div>
+    ${field("What for", `<input name="note" maxlength="80" placeholder="e.g. Lunch, gas, groceries">`)}
+    ${field("Date", `<input name="date" type="date" required value="${TODAY()}">`)}`, "Add expense", fd=>{
+      S.expenses.push({id:uid(), ts:Date.now(), date:fd.date, amount:Number(fd.amount), cat:fd.cat, note:fd.note.trim()});
+      commit(); toast("Expense added");
+    }),
+  delExp: d => {
+    const e = S.expenses.find(x=>x.id===d.id); if (!e) return;
+    if (!confirm("Delete "+(e.note||e.cat)+" ("+peso(e.amount)+")?")) return;
+    if (e.billId){ const b = S.bills.find(x=>x.id===e.billId); if (b) delete b.paid[e.due]; }
+    S.expenses = S.expenses.filter(x=>x.id!==d.id); commit(); toast("Deleted");
+  },
+  addBill: () => billSheet(null),
+  editBill: d => billSheet(S.bills.find(b=>b.id===d.id)),
+  pay: d => {
+    const b = S.bills.find(x=>x.id===d.id); if (!b) return;
+    const eid = uid();
+    b.paid[d.due] = eid;
+    S.expenses.push({id:eid, ts:Date.now(), date:TODAY(), amount:Number(b.amount), cat:b.cat||(b.kind==="loan"?"Loan":"Bills"), note:b.name+" ("+fmtDate(d.due)+" due)", billId:b.id, due:d.due});
+    commit(); toast("Marked paid and logged as expense");
+  },
+  unpay: d => {
+    const b = S.bills.find(x=>x.id===d.id); if (!b) return;
+    const eid = b.paid[d.due]; delete b.paid[d.due];
+    S.expenses = S.expenses.filter(e=>e.id!==eid && !(e.billId===b.id && e.due===d.due));
+    commit(); toast("Payment undone");
+  },
+  addFund: () => fundSheet(null),
+  editFund: d => fundSheet(S.funds.find(f=>f.id===d.id)),
+  pickFund: d => { S.activeFund = d.id; commit(); },
+  addEntry: d => {
+    const f = S.funds.find(x=>x.id===d.id); if (!f) return;
+    openSheet("Log work spending", `
+      <div class="two">${field("Amount (₱)", `<input name="amount" type="number" inputmode="decimal" step="0.01" min="0.01" required>`)}${field("Date", `<input name="date" type="date" required value="${TODAY()}">`)}</div>
+      ${field("Purpose", `<input name="purpose" required maxlength="100" placeholder="e.g. Fuel to Dayap site, field supplies">`)}
+      ${field("Receipt / OR no. (optional)", `<input name="receipt" maxlength="40">`)}`, "Add to fund", fd=>{
+        f.entries.push({id:uid(), ts:Date.now(), date:fd.date, amount:Number(fd.amount), purpose:fd.purpose.trim(), receipt:fd.receipt.trim()});
+        commit(); toast("Logged to "+f.name);
+      });
+  },
+  delEntry: d => {
+    const f = S.funds.find(x=>x.id===d.fund); if (!f) return;
+    const e = f.entries.find(x=>x.id===d.id); if (!e || !confirm("Delete "+e.purpose+" ("+peso(e.amount)+")?")) return;
+    f.entries = f.entries.filter(x=>x.id!==d.id); commit(); toast("Deleted");
+  },
+  exportFund: async d => {
+    const f = S.funds.find(x=>x.id===d.id); if (!f) return;
+    const q = v => '"'+String(v??"").replace(/"/g,'""')+'"';
+    const spent = f.entries.reduce((a,e)=>a+Number(e.amount),0);
+    const rows = [["Date","Purpose","Receipt / OR no.","Amount (PHP)"].map(q).join(",")]
+      .concat([...f.entries].sort((a,b)=>a.date.localeCompare(b.date)).map(e=>[e.date,e.purpose,e.receipt,Number(e.amount).toFixed(2)].map(q).join(",")))
+      .concat(["", [ "", "", "Fund received ("+f.date+")", Number(f.amount).toFixed(2)].map(q).join(","), ["","","Total spent",spent.toFixed(2)].map(q).join(","), ["","",(f.amount-spent)>=0?"Balance to return":"Amount to reimburse",Math.abs(f.amount-spent).toFixed(2)].map(q).join(",")]);
+    const csv = "\ufeff"+rows.join("\r\n");
+    const name = "liquidation-"+f.name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")+".csv";
+    if (!(await saveFile(name, csv, "text/csv"))){
+      try { await navigator.clipboard.writeText(rows.join("\n")); toast("Download not available here. Copied the table instead."); }
+      catch(e){ toast("Couldn't export from this view"); }
+    }
+  },
+  backup: () => {
+    openSheet("Backup", `<p style="margin:0 0 14px">Save a copy of everything (expenses, bills, loans and work funds) as a file. Restore it on another phone or after reinstalling.</p>
+      <div class="actions" style="margin-top:0"><button type="button" class="btn primary" id="bkDown">Download backup</button>
+      <label class="btn filebtn">Restore from backup<input type="file" id="bkFile" accept=".json,application/json"></label></div>
+      <p class="hint" style="margin-top:12px">Restoring replaces what's here now. Bayad version ${APP_VERSION}.</p>`, "Done", ()=>{});
+    $("#bkDown").onclick = async () => {
+      const ok = await saveFile("bayad-backup-"+TODAY()+".json", JSON.stringify({app:"bayad", v:1, savedAt:new Date().toISOString(), state:S}, null, 1), "application/json");
+      if (!ok) toast("Couldn't save the backup from this view");
+    };
+    $("#bkFile").onchange = async e => {
+      const file = e.target.files[0]; if (!file) return;
+      try {
+        const data = JSON.parse(await file.text());
+        const st = data && data.app === "bayad" ? data.state : null;
+        if (!st) { toast("That file isn't a Bayad backup"); return; }
+        const n = normalize(st);
+        if (!confirm("Replace current data with this backup? ("+n.expenses.length+" expenses, "+n.bills.length+" bills/loans, "+n.funds.length+" work funds)")) return;
+        S = n; commit(); $("#sheet").close(); toast("Backup restored");
+      } catch(err){ toast("Couldn't read that file"); }
+    };
+  }
+};
+async function saveFile(name, text, mime){
+  try {
+    const dl = window.claude && window.claude.use ? await window.claude.use("downloads") : null;
+    if (dl){ await dl.save({filename:name, data:text}); return true; }
+  } catch(err){ if (err && err.code==="declined") return true; }
+  if (window.claude) return false;
+  const blob = new Blob([text], {type:mime});
+  try {
+    const file = new File([blob], name, {type:mime});
+    if (navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file]}); return true; }
+  } catch(err){ if (err && err.name==="AbortError") return true; }
+  try {
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 4000); return true;
+  } catch(err){ return false; }
+}
+function fundSheet(f){
+  const isNew = !f;
+  f = f || {name:"", amount:5000, date:TODAY()};
+  openSheet(isNew?"New work fund":"Edit fund", `
+    ${field("Name", `<input name="name" required maxlength="50" value="${esc(f.name)}" placeholder="e.g. Sept cash advance">`)}
+    <div class="two">${field("Amount received (₱)", `<input name="amount" type="number" inputmode="decimal" step="0.01" min="0.01" required value="${esc(f.amount)}">`)}${field("Date received", `<input name="date" type="date" required value="${esc(f.date)}">`)}</div>`,
+    isNew?"Add fund":"Save changes", fd=>{
+      if (isNew){ const nf = {id:uid(), name:fd.name.trim(), amount:Number(fd.amount), date:fd.date, entries:[]}; S.funds.push(nf); S.activeFund = nf.id; }
+      else Object.assign(f, {name:fd.name.trim(), amount:Number(fd.amount), date:fd.date});
+      commit(); toast(isNew?"Fund added":"Changes saved");
+    }, isNew?"":`<button type="button" class="btn danger left" id="delFund">Delete</button>`);
+  if (!isNew) $("#delFund").onclick = () => { if (confirm("Delete "+f.name+" and all its entries?")){ S.funds = S.funds.filter(x=>x.id!==f.id); S.activeFund = null; commit(); $("#sheet").close(); toast("Deleted"); } };
+}
+document.addEventListener("click", e=>{
+  const b = e.target.closest("[data-act]");
+  if (!b || !A[b.dataset.act]) return;
+  A[b.dataset.act](b.dataset);
+});
+
+let toastT;
+function toast(msg){ const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(()=>t.classList.remove("show"), 2200); }
+
+/* ---------- persistence: account (private to you) with device fallback ---------- */
+let docRef = null, saving = false, dirty = false, saveT = null;
+function setSync(mode){ $("#sync").textContent = mode==="cloud" ? "Synced to your account" : mode==="saving" ? "Saving…" : "Saved on this phone"; }
+function saveLocal(){ try { localStorage.setItem("bayad-state", JSON.stringify(S)); } catch(e){} }
+function commit(){ render(); saveLocal(); if (docRef){ dirty = true; setSync("saving"); clearTimeout(saveT); saveT = setTimeout(flush, 700); } }
+async function flush(){
+  if (!docRef) return;
+  if (saving){ saveT = setTimeout(flush, 400); return; }
+  saving = true; dirty = false;
+  try { await docRef.set({state: JSON.parse(JSON.stringify(S)), updatedAt: new Date().toISOString()}); if (!dirty) setSync("cloud"); }
+  catch(e){ if (e && e.code==="unavailable"){ dirty = true; setTimeout(flush, 1500+Math.random()*1000); } else { docRef = null; setSync("device"); } }
+  saving = false;
+}
+const hasData = s => s.expenses.length || s.bills.length || s.funds.length;
+async function initCloud(){
+  if (!window.claude || !window.claude.use) return;
+  try {
+    const [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
+    if (!db || !user) return;
+    const id = await user.id();
+    if (!id) return;
+    const ref = db.doc("data/users/"+id+"/state");
+    let first = true;
+    ref.onSnapshot(snap=>{
+      if (snap.exists){
+        const data = snap.data();
+        if (data && data.state && !dirty && !saving && !snap.metadata.hasPendingWrites && JSON.stringify(data.state) !== JSON.stringify(S)){
+          S = normalize(JSON.parse(JSON.stringify(data.state))); saveLocal(); render();
+        }
+      } else if (first && hasData(S)){ dirty = true; saveT = setTimeout(flush, 300); }
+      first = false;
+      if (!dirty && !saving) setSync("cloud");
+    }, ()=>{ docRef = null; setSync("device"); });
+    docRef = ref;
+  } catch(e){ setSync("device"); }
+}
+
+render();
+initCloud();
+/* ---------- auto-update: upload a new index.html to GitHub and the phone picks it up ---------- */
+const APP_VERSION = "1.2";
+let swReg = null;
+if ("serviceWorker" in navigator) window.addEventListener("load", ()=>navigator.serviceWorker.register("sw.js").then(r=>{ swReg = r; }).catch(()=>{}));
+async function checkForUpdate(){
+  if (!navigator.onLine) return;
+  try {
+    if (swReg) swReg.update().catch(()=>{});
+    const r = await fetch("index.html?check="+Date.now(), {cache:"no-store"});
+    if (!r.ok) return;
+    const m = (await r.text()).match(/name="bayad-version" content="([^"]+)"/);
+    if (!m || m[1] === APP_VERSION) return;
+    let tried = null; try { tried = sessionStorage.getItem("bayad-reloaded-for"); } catch(e){}
+    if (!$("#sheet").open && tried !== m[1]){
+      try { sessionStorage.setItem("bayad-reloaded-for", m[1]); } catch(e){}
+      location.reload();
+    } else showUpdateBar(m[1]);
+  } catch(e){}
+}
+function showUpdateBar(v){
+  if ($("#updateBar")) return;
+  const bar = document.createElement("div");
+  bar.className = "update"; bar.id = "updateBar"; bar.setAttribute("role","status");
+  bar.innerHTML = "<span>Bayad "+esc(v)+" is ready</span><button type=\"button\">Update now</button>";
+  bar.querySelector("button").onclick = () => location.reload();
+  document.body.appendChild(bar);
+}
+checkForUpdate();
+document.addEventListener("visibilitychange", ()=>{ if (document.visibilityState === "visible") checkForUpdate(); });
+window.addEventListener("online", checkForUpdate);
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
+// refresh "due in" labels when the day changes
+setInterval(()=>{ if (!$("#sheet").open) render(); }, 60*60*1000);
+</script>
+</body>
+</html>
