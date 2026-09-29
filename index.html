@@ -167,7 +167,7 @@ dialog h3{font:600 20px var(--display);margin:0 0 14px}
 .toast.show{opacity:1}
 @media (prefers-reduced-motion: reduce){.toast{transition:none}}
 </style>
-<meta name="bayad-version" content="2.1">
+<meta name="bayad-version" content="2.2">
 <meta name="theme-color" content="#2F6B4A">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -179,7 +179,7 @@ dialog h3{font:600 20px var(--display);margin:0 0 14px}
 </head>
 <body>
 <div class="wrap">
-  <header class="top"><h1><span aria-hidden="true" style="font-size:.9em;margin-right:6px">🐷</span>Bayad<span class="ver" id="ver">v2.1</span></h1><div class="hdr-r"><span class="sync" id="sync">Saved on this phone</span><button class="btn small ghost" data-act="backup">Backup</button></div></header>
+  <header class="top"><h1><span aria-hidden="true" style="font-size:.9em;margin-right:6px">🐷</span>Bayad<span class="ver" id="ver">v2.2</span></h1><div class="hdr-r"><span class="sync" id="sync">Saved on this phone</span><button class="btn small ghost" data-act="backup">Backup</button></div></header>
   <main id="main"></main>
 </div>
 <nav class="tabs" aria-label="Sections"><div class="in">
@@ -228,7 +228,7 @@ let expCut = null;
 function latest20(){ const d = new Date(); return ymd(new Date(d.getFullYear(), d.getMonth() - (d.getDate() < 20 ? 1 : 0), 20)); }
 function normalize(s){
   s = s && typeof s === "object" ? s : {};
-  return {expenses:Array.isArray(s.expenses)?s.expenses:[], bills:Array.isArray(s.bills)?s.bills.map(b=>({...b,paid:b.paid||{}})):[], funds:Array.isArray(s.funds)?s.funds.map(f=>({...f,entries:f.entries||[]})):[], activeFund:s.activeFund||null, salary: s.salary && typeof s.salary==="object" ? {a5:Number(s.salary.a5)||0, a20:Number(s.salary.a20)||0, overrides:s.salary.overrides||{}} : null, debts:Array.isArray(s.debts)?s.debts.map(d=>({...d,payments:Array.isArray(d.payments)?d.payments:[]})):[], trackFrom: /^\d{4}-\d{2}-\d{2}$/.test(s.trackFrom||"") ? s.trackFrom : latest20()};
+  return {expenses:Array.isArray(s.expenses)?s.expenses:[], bills:Array.isArray(s.bills)?s.bills.map(b=>({...b,paid:b.paid||{}})):[], funds:Array.isArray(s.funds)?s.funds.map(f=>({...f,entries:f.entries||[]})):[], activeFund:s.activeFund||null, salary: s.salary && typeof s.salary==="object" ? {a5:Number(s.salary.a5)||0, a20:Number(s.salary.a20)||0, overrides:s.salary.overrides||{}} : null, checks:Array.isArray(s.checks)?s.checks.filter(c=>c&&c.date):[], debts:Array.isArray(s.debts)?s.debts.map(d=>({...d,payments:Array.isArray(d.payments)?d.payments:[]})):[], trackFrom: /^\d{4}-\d{2}-\d{2}$/.test(s.trackFrom||"") ? s.trackFrom : latest20()};
 }
 try { const raw = localStorage.getItem("bayad-state"); if (raw) S = normalize(JSON.parse(raw)); } catch(e){}
 if (!S) S = normalize({});
@@ -311,6 +311,35 @@ function flow(p, current){
   const due = dueItems.reduce((a,x)=>a+Number(x.b.amount),0);
   return {salary, spent, due, dueN:dueItems.length, left: salary - spent - due, adjusted: S.salary && S.salary.overrides[p.start] !== undefined};
 }
+/* ---------- balance checks: "this is how much I actually have right now" ---------- */
+function activeCheck(p, started){
+  const t = TODAY();
+  const list = S.checks.filter(c => c.date <= t && (started ? c.date >= p.start : true))
+    .sort((a,b)=> a.date.localeCompare(b.date) || a.ts - b.ts);
+  return list[list.length-1] || null;
+}
+const afterCheck = (e, c) => e.date > c.date || (e.date === c.date && (e.ts||0) > c.ts);
+function cutoffCalc(p, started){
+  const f = flow(p, started), c = activeCheck(p, started);
+  if (!c) return {...f, check:null, onHand:f.salary};
+  const salary = p.start > c.date ? payAmt(p.start) : 0;
+  const spent = S.expenses.filter(e => afterCheck(e, c) && e.date <= p.end).reduce((a,e)=>a+Number(e.amount),0);
+  return {...f, check:c, salary, spent, onHand:c.amount, left: c.amount + salary - spent - f.due};
+}
+function balanceSheet(){
+  const t = TODAY(), started = S.trackFrom <= t;
+  const p = periodOf(started ? t : S.trackFrom), f = cutoffCalc(p, started);
+  const expected = f.check ? f.left + f.due : f.salary - f.spent;
+  const todays = S.checks.filter(c => c.date === t);
+  openSheet("Update balance", `<p class="hint" style="margin:0 0 12px">Enter the money you actually have right now (cash, GCash, bank you spend from). Bayad uses it as your starting point, so anything you forgot to log stops throwing the numbers off. Expenses and bills you log after this are deducted from it.</p>
+    ${field("Money on hand now (₱)", `<input name="amount" type="number" inputmode="decimal" step="0.01" min="0" required>`)}
+    ${started && !f.check ? `<p class="hint">Bayad currently expects about ${peso(Math.max(0, expected))}.</p>` : ""}`,
+    "Save balance", fd=>{
+      S.checks.push({id:uid(), date:TODAY(), ts:Date.now(), amount:Number(fd.amount)||0});
+      commit(); toast("Balance updated");
+    }, todays.length ? `<button type="button" class="btn ghost left" id="undoCheck">Undo today's</button>` : "");
+  if (todays.length) $("#undoCheck").onclick = () => { const last = todays[todays.length-1]; S.checks = S.checks.filter(c=>c.id!==last.id); commit(); $("#sheet").close(); toast("Balance check removed"); };
+}
 function payOptions(){
   const t = TODAY(), cur = periodOf(t).start;
   let p = periodOf(t); for (let i = 0; i < 2; i++) p = prevPeriod(p);
@@ -322,19 +351,27 @@ function payOptions(){
 }
 function flowCard(){
   const t = TODAY(), started = S.trackFrom <= t;
-  const p = periodOf(started ? t : S.trackFrom), f = flow(p, started), np = nextPeriod(p), nf = flow(np, false);
-  const used = f.salary ? Math.min(100, (f.spent+f.due)/f.salary*100) : 0;
+  const p = periodOf(started ? t : S.trackFrom), f = cutoffCalc(p, started), np = nextPeriod(p), nf = flow(np, false);
+  const carry = f.check ? f.left : 0;
+  const nLeft = nf.left + carry;
+  const base = f.onHand + f.salary;
+  const used = base > 0 ? Math.min(100, (f.spent+f.due)/base*100) : (f.spent+f.due>0?100:0);
   const days = daysBetween(t, np.start);
+  const rows = f.check
+    ? `<div class="fl"><span>Money on hand, ${fmtDate(f.check.date)}</span><b class="num">${peso(f.check.amount)}</b></div>${f.salary?`<div class="fl"><span>Salary ${fmtDate(p.start)}</span><b class="num">+${peso(f.salary)}</b></div>`:""}
+       <div class="fl"><span>Spent since</span><b class="num">−${peso(f.spent)}</b></div>`
+    : `<div class="fl"><span>Salary in${f.adjusted?" (adjusted)":""}</span><b class="num">${peso(f.salary)}</b></div>
+       <div class="fl"><span>Spent so far</span><b class="num">−${peso(f.spent)}</b></div>`;
   return `<div class="head"><h2>${started?"This cutoff":"First cutoff"}</h2><button class="btn small ghost" data-act="salary">Edit salary</button></div>
   <div class="flow"><div class="top">${payLabel(p)}, ${rangeLabel(p)}</div>
-    <div class="fl"><span>Salary in${f.adjusted?" (adjusted)":""}</span><b class="num">${peso(f.salary)}</b></div>
-    <div class="fl"><span>Spent so far</span><b class="num">−${peso(f.spent)}</b></div>
+    ${rows}
     <div class="fl"><span>Bills still due${f.dueN?" ("+f.dueN+")":""}</span><b class="num">−${peso(f.due)}</b></div>
     <div class="fl total"><span>Left after bills</span><b class="num ${f.left<0?"neg":""}">${f.left<0?"−":""}${peso(Math.abs(f.left))}</b></div>
     <div class="bar"><i style="width:${used}%;${f.left<0?"background:var(--danger)":""}"></i></div>
-    <div class="foot">${started ? `Next payday ${fmtDate(np.start)}, ${days===1?"tomorrow":"in "+days+" days"}.` : `Tracking starts with your ${fmtDate(p.start)} pay, ${daysBetween(t,p.start)===1?"tomorrow":"in "+daysBetween(t,p.start)+" days"}.`} <button class="btn small ghost" style="padding:2px 4px" data-act="adjustPay" data-start="${p.start}">Adjust this pay</button></div>
+    <div class="actions"><button class="btn small primary" data-act="balance">Update balance</button><button class="btn small" data-act="adjustPay" data-start="${p.start}">Adjust this pay</button></div>
+    <div class="foot">${started ? `Next payday ${fmtDate(np.start)}, ${days===1?"tomorrow":"in "+days+" days"}.` : `Tracking starts with your ${fmtDate(p.start)} pay, ${daysBetween(t,p.start)===1?"tomorrow":"in "+daysBetween(t,p.start)+" days"}.`}</div>
   </div>
-  <div class="list" style="margin-top:10px"><div class="row"><div class="grow"><div class="t">Next cutoff</div><div class="d">${payLabel(np)}, ${rangeLabel(np)} · ${peso(nf.salary)} in, ${peso(nf.due)} bills</div></div><div class="a num ${nf.left<0?"neg":""}">${nf.left<0?"−":""}${peso(Math.abs(nf.left))}<div class="d" style="text-align:right;font-weight:400">left</div></div></div></div>`;
+  <div class="list" style="margin-top:10px"><div class="row"><div class="grow"><div class="t">Next cutoff</div><div class="d">${payLabel(np)}, ${rangeLabel(np)} · ${peso(nf.salary)} in, ${peso(nf.due)} bills${f.check?`, ${carry<0?"−":""}${peso(Math.abs(carry))} carried over`:""}</div></div><div class="a num ${nLeft<0?"neg":""}">${nLeft<0?"−":""}${peso(Math.abs(nLeft))}<div class="d" style="text-align:right;font-weight:400">left</div></div></div></div>`;
 }
 
 /* ---------- views ---------- */
@@ -683,6 +720,7 @@ const A = {
     S.expenses = S.expenses.filter(e=>e.id!==eid && !(e.billId===b.id && e.due===d.due));
     commit(); toast("Payment undone");
   },
+  balance: () => balanceSheet(),
   addDebt: () => debtSheet(null),
   editDebt: d => debtSheet(S.debts.find(x=>x.id===d.id)),
   payDebt: d => payDebtSheet(S.debts.find(x=>x.id===d.id)),
@@ -716,7 +754,7 @@ const A = {
       <div class="actions" style="margin-top:0"><button type="button" class="btn primary" id="bkDown">Download backup</button>
       <label class="btn filebtn">Restore from backup<input type="file" id="bkFile" accept=".json,application/json"></label></div>
       <p class="hint" style="margin-top:12px">Restoring replaces what's here now. Bayad version ${APP_VERSION}.</p>
-      <div style="border-top:1px solid var(--line);margin:16px 0 0;padding-top:14px"><b>Start over</b><p class="hint" style="margin:4px 0 10px">Erase all expenses, bills, loans, salary, people who owe you and work funds and go back to zero. Download a backup first if you might want any of it later.</p>
+      <div style="border-top:1px solid var(--line);margin:16px 0 0;padding-top:14px"><b>Start over</b><p class="hint" style="margin:4px 0 10px">Erase all expenses, bills, loans, salary, balance checks, people who owe you and work funds and go back to zero. Download a backup first if you might want any of it later.</p>
       <button type="button" class="btn danger" id="bkReset">Erase everything</button></div>`, "Done", ()=>{});
     $("#bkReset").onclick = () => {
       if (!confirm("Erase ALL Bayad data on this phone? This can't be undone.")) return;
@@ -849,7 +887,7 @@ async function initCloud(){
 render();
 initCloud();
 /* ---------- auto-update: upload a new index.html to GitHub and the phone picks it up ---------- */
-const APP_VERSION = "2.1";
+const APP_VERSION = "2.2";
 let swReg = null;
 if ("serviceWorker" in navigator) window.addEventListener("load", ()=>navigator.serviceWorker.register("sw.js").then(r=>{ swReg = r; }).catch(()=>{}));
 async function checkForUpdate(){
