@@ -167,7 +167,7 @@ dialog h3{font:600 20px var(--display);margin:0 0 14px}
 .toast.show{opacity:1}
 @media (prefers-reduced-motion: reduce){.toast{transition:none}}
 </style>
-<meta name="bayad-version" content="2.2">
+<meta name="bayad-version" content="2.3">
 <meta name="theme-color" content="#2F6B4A">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -179,7 +179,7 @@ dialog h3{font:600 20px var(--display);margin:0 0 14px}
 </head>
 <body>
 <div class="wrap">
-  <header class="top"><h1><span aria-hidden="true" style="font-size:.9em;margin-right:6px">🐷</span>Bayad<span class="ver" id="ver">v2.2</span></h1><div class="hdr-r"><span class="sync" id="sync">Saved on this phone</span><button class="btn small ghost" data-act="backup">Backup</button></div></header>
+  <header class="top"><h1><span aria-hidden="true" style="font-size:.9em;margin-right:6px">🐷</span>Bayad<span class="ver" id="ver">v2.3</span></h1><div class="hdr-r"><span class="sync" id="sync">Saved on this phone</span><button class="btn small ghost" data-act="backup">Backup</button></div></header>
   <main id="main"></main>
 </div>
 <nav class="tabs" aria-label="Sections"><div class="in">
@@ -226,9 +226,22 @@ let expMode = "cut";
 let expCut = null;
 // Bills due before this date count as already settled (so old loan payments don't pile up as overdue).
 function latest20(){ const d = new Date(); return ymd(new Date(d.getFullYear(), d.getMonth() - (d.getDate() < 20 ? 1 : 0), 20)); }
+function receivedFrom(s){
+  if (s.received && typeof s.received === "object") return s.received;
+  // First run after this update: assume the current payday (if already past) was received.
+  const r = {};
+  if (s.salary && s.trackFrom){
+    const t = TODAY(), cur = periodOf(t).start;
+    if (cur >= s.trackFrom && cur < t){
+      const o = (s.salary.overrides||{})[cur];
+      r[cur] = {amount: o !== undefined ? Number(o) : Number(parse(cur).getDate()===5 ? s.salary.a5 : s.salary.a20)||0, date:cur, ts:0};
+    }
+  }
+  return r;
+}
 function normalize(s){
   s = s && typeof s === "object" ? s : {};
-  return {expenses:Array.isArray(s.expenses)?s.expenses:[], bills:Array.isArray(s.bills)?s.bills.map(b=>({...b,paid:b.paid||{}})):[], funds:Array.isArray(s.funds)?s.funds.map(f=>({...f,entries:f.entries||[]})):[], activeFund:s.activeFund||null, salary: s.salary && typeof s.salary==="object" ? {a5:Number(s.salary.a5)||0, a20:Number(s.salary.a20)||0, overrides:s.salary.overrides||{}} : null, checks:Array.isArray(s.checks)?s.checks.filter(c=>c&&c.date):[], debts:Array.isArray(s.debts)?s.debts.map(d=>({...d,payments:Array.isArray(d.payments)?d.payments:[]})):[], trackFrom: /^\d{4}-\d{2}-\d{2}$/.test(s.trackFrom||"") ? s.trackFrom : latest20()};
+  return {expenses:Array.isArray(s.expenses)?s.expenses:[], bills:Array.isArray(s.bills)?s.bills.map(b=>({...b,paid:b.paid||{}})):[], funds:Array.isArray(s.funds)?s.funds.map(f=>({...f,entries:f.entries||[]})):[], activeFund:s.activeFund||null, salary: s.salary && typeof s.salary==="object" ? {a5:Number(s.salary.a5)||0, a20:Number(s.salary.a20)||0, overrides:s.salary.overrides||{}} : null, received: receivedFrom(s), checks:Array.isArray(s.checks)?s.checks.filter(c=>c&&c.date):[], debts:Array.isArray(s.debts)?s.debts.map(d=>({...d,payments:Array.isArray(d.payments)?d.payments:[]})):[], trackFrom: /^\d{4}-\d{2}-\d{2}$/.test(s.trackFrom||"") ? s.trackFrom : latest20()};
 }
 try { const raw = localStorage.getItem("bayad-state"); if (raw) S = normalize(JSON.parse(raw)); } catch(e){}
 if (!S) S = normalize({});
@@ -321,19 +334,50 @@ function activeCheck(p, started){
 const afterCheck = (e, c) => e.date > c.date || (e.date === c.date && (e.ts||0) > c.ts);
 function cutoffCalc(p, started){
   const f = flow(p, started), c = activeCheck(p, started);
-  if (!c) return {...f, check:null, onHand:f.salary};
-  const salary = p.start > c.date ? payAmt(p.start) : 0;
-  const spent = S.expenses.filter(e => afterCheck(e, c) && e.date <= p.end).reduce((a,e)=>a+Number(e.amount),0);
-  return {...f, check:c, salary, spent, onHand:c.amount, left: c.amount + salary - spent - f.due};
+  const rec = S.received[p.start] || null, expected = payAmt(p.start);
+  let spent, recAmt;
+  if (c){
+    spent = S.expenses.filter(e => afterCheck(e, c) && e.date <= p.end).reduce((a,e)=>a+Number(e.amount),0);
+    recAmt = rec && rec.ts > c.ts ? Number(rec.amount) : 0;
+  } else { spent = f.spent; recAmt = rec ? Number(rec.amount) : 0; }
+  const base = c ? c.amount : 0;
+  const onHand = base + recAmt - spent;
+  const pending = (expected > 0 && !rec && !(c && c.date >= p.start)) ? expected : 0;
+  return {...f, check:c, rec, recAmt, spent, base, onHand, pending, left: onHand + pending - f.due};
+}
+function currentCutoff(){
+  const t = TODAY(), started = S.trackFrom <= t;
+  return {t, started, p: periodOf(started ? t : S.trackFrom)};
+}
+function salarySheet(start, prompted){
+  const exp = payAmt(start), t = TODAY();
+  openSheet(prompted ? "Payday check" : "Salary received", `<p style="margin:0 0 12px">${prompted?"Did your ":"Confirm your "}<b>${fmtDate(start)}</b> salary arrive${prompted?"?":"."} Once confirmed it's added to your money on hand.</p>
+    <div class="two">${field("Amount received (₱)", `<input name="amount" type="number" inputmode="decimal" step="0.01" min="0" required value="${esc(exp)}">`)}${field("Date received", `<input name="date" type="date" required max="${t}" value="${start <= t ? t : start}">`)}</div>`,
+    "Yes, add it", fd=>{
+      S.received[start] = {amount:Number(fd.amount)||0, date:fd.date, ts:Date.now()};
+      commit(); toast("Salary added to money on hand");
+    }, prompted ? `<button type="button" class="btn ghost left" id="notYet">Not yet</button>` : "");
+  if (prompted) $("#notYet").onclick = () => { $("#sheet").close(); toast("I'll ask again later"); };
+}
+function maybePromptPay(){
+  if (!S.salary || $("#sheet").open) return;
+  const {t, p} = currentCutoff();
+  if (p.start > t) return;
+  const f = cutoffCalc(p, S.trackFrom <= t);
+  if (!f.pending) return;
+  if (p.start === t && new Date().getHours() < 18) return; // on payday itself, ask from 6 PM
+  let snooze = {}; try { snooze = JSON.parse(localStorage.getItem("bayad-snooze")||"{}"); } catch(e){}
+  if (snooze[p.start] && Date.now() - snooze[p.start] < 3*3600*1000) return;
+  snooze[p.start] = Date.now(); try { localStorage.setItem("bayad-snooze", JSON.stringify(snooze)); } catch(e){}
+  salarySheet(p.start, true);
 }
 function balanceSheet(){
   const t = TODAY(), started = S.trackFrom <= t;
   const p = periodOf(started ? t : S.trackFrom), f = cutoffCalc(p, started);
-  const expected = f.check ? f.left + f.due : f.salary - f.spent;
   const todays = S.checks.filter(c => c.date === t);
   openSheet("Update balance", `<p class="hint" style="margin:0 0 12px">Enter the money you actually have right now (cash, GCash, bank you spend from). Bayad uses it as your starting point, so anything you forgot to log stops throwing the numbers off. Expenses and bills you log after this are deducted from it.</p>
     ${field("Money on hand now (₱)", `<input name="amount" type="number" inputmode="decimal" step="0.01" min="0" required>`)}
-    ${started && !f.check ? `<p class="hint">Bayad currently expects about ${peso(Math.max(0, expected))}.</p>` : ""}`,
+    <p class="hint">Bayad currently thinks you have ${f.onHand<0?"−":""}${peso(Math.abs(f.onHand))}.</p>`,
     "Save balance", fd=>{
       S.checks.push({id:uid(), date:TODAY(), ts:Date.now(), amount:Number(fd.amount)||0});
       commit(); toast("Balance updated");
@@ -350,18 +394,23 @@ function payOptions(){
   return opts.sort().map(s => `<option value="${s}" ${s===S.trackFrom?"selected":""}>${fmtDate(s)}, ${parse(s).getFullYear()} pay${s===cur?" (latest)":s===next?" (next)":""}</option>`).join("");
 }
 function flowCard(){
-  const t = TODAY(), started = S.trackFrom <= t;
-  const p = periodOf(started ? t : S.trackFrom), f = cutoffCalc(p, started), np = nextPeriod(p), nf = flow(np, false);
-  const carry = f.check ? f.left : 0;
-  const nLeft = nf.left + carry;
-  const base = f.onHand + f.salary;
-  const used = base > 0 ? Math.min(100, (f.spent+f.due)/base*100) : (f.spent+f.due>0?100:0);
+  const {t, started, p} = currentCutoff();
+  const f = cutoffCalc(p, started), np = nextPeriod(p), nf = flow(np, false);
+  const carry = f.left;
+  const nLeft = nf.salary + carry - nf.spent - nf.due;
+  const inflow = f.base + f.recAmt + f.pending;
+  const used = inflow > 0 ? Math.min(100, (f.spent+f.due)/inflow*100) : (f.spent+f.due>0?100:0);
   const days = daysBetween(t, np.start);
-  const rows = f.check
-    ? `<div class="fl"><span>Money on hand, ${fmtDate(f.check.date)}</span><b class="num">${peso(f.check.amount)}</b></div>${f.salary?`<div class="fl"><span>Salary ${fmtDate(p.start)}</span><b class="num">+${peso(f.salary)}</b></div>`:""}
-       <div class="fl"><span>Spent since</span><b class="num">−${peso(f.spent)}</b></div>`
-    : `<div class="fl"><span>Salary in${f.adjusted?" (adjusted)":""}</span><b class="num">${peso(f.salary)}</b></div>
-       <div class="fl"><span>Spent so far</span><b class="num">−${peso(f.spent)}</b></div>`;
+  const sal = fmtDate(p.start);
+  let rows = "";
+  if (f.check) rows += `<div class="fl"><span>Balance checked ${fmtDate(f.check.date)}</span><b class="num">${peso(f.check.amount)}</b></div>`;
+  if (f.recAmt) rows += `<div class="fl"><span>Salary ${sal}, received <button class="btn small ghost" style="padding:0 4px" data-act="unreceive" data-start="${p.start}">undo</button></span><b class="num">+${peso(f.recAmt)}</b></div>`;
+  rows += `<div class="fl"><span>Spent ${f.check?"since":"so far"}</span><b class="num">−${peso(f.spent)}</b></div>`;
+  rows += `<div class="fl" style="font-weight:600"><span style="color:var(--ink)">Money on hand now</span><b class="num ${f.onHand<0?"neg":""}">${f.onHand<0?"−":""}${peso(Math.abs(f.onHand))}</b></div>`;
+  if (f.pending){
+    const canConfirm = p.start <= t;
+    rows += `<div class="fl" style="margin-top:6px"><span>Salary ${sal}, ${canConfirm?"waiting":"expected"}${canConfirm?` <button class="btn small primary" style="padding:2px 8px" data-act="confirmPay" data-start="${p.start}">Received</button>`:""}</span><b class="num">+${peso(f.pending)}</b></div>`;
+  }
   return `<div class="head"><h2>${started?"This cutoff":"First cutoff"}</h2><button class="btn small ghost" data-act="salary">Edit salary</button></div>
   <div class="flow"><div class="top">${payLabel(p)}, ${rangeLabel(p)}</div>
     ${rows}
@@ -371,7 +420,7 @@ function flowCard(){
     <div class="actions"><button class="btn small primary" data-act="balance">Update balance</button><button class="btn small" data-act="adjustPay" data-start="${p.start}">Adjust this pay</button></div>
     <div class="foot">${started ? `Next payday ${fmtDate(np.start)}, ${days===1?"tomorrow":"in "+days+" days"}.` : `Tracking starts with your ${fmtDate(p.start)} pay, ${daysBetween(t,p.start)===1?"tomorrow":"in "+daysBetween(t,p.start)+" days"}.`}</div>
   </div>
-  <div class="list" style="margin-top:10px"><div class="row"><div class="grow"><div class="t">Next cutoff</div><div class="d">${payLabel(np)}, ${rangeLabel(np)} · ${peso(nf.salary)} in, ${peso(nf.due)} bills${f.check?`, ${carry<0?"−":""}${peso(Math.abs(carry))} carried over`:""}</div></div><div class="a num ${nLeft<0?"neg":""}">${nLeft<0?"−":""}${peso(Math.abs(nLeft))}<div class="d" style="text-align:right;font-weight:400">left</div></div></div></div>`;
+  <div class="list" style="margin-top:10px"><div class="row"><div class="grow"><div class="t">Next cutoff</div><div class="d">${payLabel(np)}, ${rangeLabel(np)} · ${peso(nf.salary)} in, ${peso(nf.due)} bills, ${carry<0?"−":""}${peso(Math.abs(carry))} carried over</div></div><div class="a num ${nLeft<0?"neg":""}">${nLeft<0?"−":""}${peso(Math.abs(nLeft))}<div class="d" style="text-align:right;font-weight:400">left</div></div></div></div>`;
 }
 
 /* ---------- views ---------- */
@@ -721,6 +770,8 @@ const A = {
     commit(); toast("Payment undone");
   },
   balance: () => balanceSheet(),
+  confirmPay: d => salarySheet(d.start, false),
+  unreceive: d => { if (!confirm("Mark the "+fmtDate(d.start)+" salary as not received yet?")) return; delete S.received[d.start]; commit(); toast("Salary moved back to waiting"); },
   addDebt: () => debtSheet(null),
   editDebt: d => debtSheet(S.debts.find(x=>x.id===d.id)),
   payDebt: d => payDebtSheet(S.debts.find(x=>x.id===d.id)),
@@ -754,7 +805,7 @@ const A = {
       <div class="actions" style="margin-top:0"><button type="button" class="btn primary" id="bkDown">Download backup</button>
       <label class="btn filebtn">Restore from backup<input type="file" id="bkFile" accept=".json,application/json"></label></div>
       <p class="hint" style="margin-top:12px">Restoring replaces what's here now. Bayad version ${APP_VERSION}.</p>
-      <div style="border-top:1px solid var(--line);margin:16px 0 0;padding-top:14px"><b>Start over</b><p class="hint" style="margin:4px 0 10px">Erase all expenses, bills, loans, salary, balance checks, people who owe you and work funds and go back to zero. Download a backup first if you might want any of it later.</p>
+      <div style="border-top:1px solid var(--line);margin:16px 0 0;padding-top:14px"><b>Start over</b><p class="hint" style="margin:4px 0 10px">Erase all expenses, bills, loans, salary and payday confirmations, balance checks, people who owe you and work funds and go back to zero. Download a backup first if you might want any of it later.</p>
       <button type="button" class="btn danger" id="bkReset">Erase everything</button></div>`, "Done", ()=>{});
     $("#bkReset").onclick = () => {
       if (!confirm("Erase ALL Bayad data on this phone? This can't be undone.")) return;
@@ -887,7 +938,7 @@ async function initCloud(){
 render();
 initCloud();
 /* ---------- auto-update: upload a new index.html to GitHub and the phone picks it up ---------- */
-const APP_VERSION = "2.2";
+const APP_VERSION = "2.3";
 let swReg = null;
 if ("serviceWorker" in navigator) window.addEventListener("load", ()=>navigator.serviceWorker.register("sw.js").then(r=>{ swReg = r; }).catch(()=>{}));
 async function checkForUpdate(){
@@ -918,6 +969,9 @@ document.addEventListener("visibilitychange", ()=>{ if (document.visibilityState
 window.addEventListener("online", checkForUpdate);
 $("#ver").textContent = "v"+APP_VERSION;
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
+setTimeout(maybePromptPay, 800);
+setInterval(maybePromptPay, 15*60*1000);
+document.addEventListener("visibilitychange", ()=>{ if (document.visibilityState === "visible") setTimeout(maybePromptPay, 600); });
 // refresh "due in" labels when the day changes
 setInterval(()=>{ if (!$("#sheet").open) render(); }, 60*60*1000);
 </script>
