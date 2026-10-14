@@ -167,7 +167,7 @@ dialog h3{font:600 20px var(--display);margin:0 0 14px}
 .toast.show{opacity:1}
 @media (prefers-reduced-motion: reduce){.toast{transition:none}}
 </style>
-<meta name="bayad-version" content="2.3">
+<meta name="bayad-version" content="2.4">
 <meta name="theme-color" content="#2F6B4A">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -179,7 +179,7 @@ dialog h3{font:600 20px var(--display);margin:0 0 14px}
 </head>
 <body>
 <div class="wrap">
-  <header class="top"><h1><span aria-hidden="true" style="font-size:.9em;margin-right:6px">🐷</span>Bayad<span class="ver" id="ver">v2.3</span></h1><div class="hdr-r"><span class="sync" id="sync">Saved on this phone</span><button class="btn small ghost" data-act="backup">Backup</button></div></header>
+  <header class="top"><h1><span aria-hidden="true" style="font-size:.9em;margin-right:6px">🐷</span>Bayad<span class="ver" id="ver">v2.4</span></h1><div class="hdr-r"><span class="sync" id="sync">Saved on this phone</span><button class="btn small ghost" data-act="backup">Backup</button></div></header>
   <main id="main"></main>
 </div>
 <nav class="tabs" aria-label="Sections"><div class="in">
@@ -631,20 +631,33 @@ function viewWork(){
   let h = `<div class="head"><h2>Work fund</h2><button class="btn small" data-act="addFund">New fund</button></div>
     <p class="worknote">Kept separate from your personal money. Nothing here counts toward your expenses or bills.</p>`;
   if (!S.funds.length) return h + `<div class="fund"><div class="lbl">No work fund yet</div><p style="margin:6px 0 0">Record money your office handed you, like a ₱5,000 cash advance, then log where every peso went for liquidation.</p><div class="actions"><button class="btn primary" data-act="addFund">Add work fund</button></div></div>`;
-  let f = S.funds.find(x=>x.id===S.activeFund) || S.funds[S.funds.length-1];
-  if (S.funds.length > 1) h += `<div class="chips">`+S.funds.map(x=>`<button class="chip" data-act="pickFund" data-id="${x.id}" aria-pressed="${x.id===f.id}">${esc(x.name)}</button>`).join("")+`</div>`;
+  const openF = S.funds.filter(x=>!x.closed), closedF = S.funds.filter(x=>x.closed).sort((a,b)=>b.closed.date.localeCompare(a.closed.date));
+  let f = S.funds.find(x=>x.id===S.activeFund) || openF[openF.length-1] || closedF[0];
+  if (openF.length > 1 || (openF.length && f.closed)) h += `<div class="chips">`+openF.map(x=>`<button class="chip" data-act="pickFund" data-id="${x.id}" aria-pressed="${x.id===f.id}">${esc(x.name)}</button>`).join("")+`</div>`;
+  if (!openF.length) h += `<div class="fund" style="margin-bottom:12px"><div class="lbl">All work funds are closed</div><div class="actions"><button class="btn primary" data-act="addFund">New fund</button></div></div>`;
   const spent = f.entries.reduce((a,e)=>a+Number(e.amount),0);
   const left = Number(f.amount) - spent;
   const pct = f.amount ? Math.min(100, spent/f.amount*100) : 0;
-  h += `<div class="fund"><div class="head"><div class="lbl">${esc(f.name)} · received ${fmtDate(f.date)}</div><button class="btn small ghost" data-act="editFund" data-id="${f.id}">Edit</button></div>
-    <div class="big num">${peso(Math.max(0,left))}</div><div class="sub num">remaining · ${peso(spent)} used of ${peso(f.amount)}</div>
+  const cl = f.closed;
+  h += `<div class="fund" style="${cl?"opacity:.85":""}"><div class="head"><div class="lbl">${esc(f.name)} · received ${fmtDate(f.date)}${cl?` · <span style="color:var(--muted)">closed ${fmtDate(cl.date)}</span>`:""}</div><button class="btn small ghost" data-act="editFund" data-id="${f.id}">Edit</button></div>
+    ${cl ? `<div class="big num">${peso(spent)}</div><div class="sub num">spent of ${peso(f.amount)} · ${left>=0?peso(left)+" returned":peso(-left)+" reimbursed"}${cl.note?" · "+esc(cl.note):""}</div>`
+         : `<div class="big num">${peso(Math.max(0,left))}</div><div class="sub num">remaining · ${peso(spent)} used of ${peso(f.amount)}</div>`}
     <div class="bar"><i style="width:${pct}%"></i></div>
-    ${left<0?`<div class="warn num">Over by ${peso(-left)}. That's your own money covering work costs; claim it back.</div>`:""}
-    <div class="actions"><button class="btn primary" data-act="addEntry" data-id="${f.id}">Log where it went</button><button class="btn" data-act="exportFund" data-id="${f.id}">Liquidation (CSV)</button></div></div>`;
+    ${!cl && left<0?`<div class="warn num">Over by ${peso(-left)}. That's your own money covering work costs; claim it back.</div>`:""}
+    <div class="actions">${cl
+      ? `<button class="btn" data-act="exportFund" data-id="${f.id}">Liquidation (CSV)</button><button class="btn" data-act="reopenFund" data-id="${f.id}">Reopen</button>`
+      : `<button class="btn primary" data-act="addEntry" data-id="${f.id}">Log where it went</button><button class="btn" data-act="exportFund" data-id="${f.id}">Liquidation (CSV)</button><button class="btn" data-act="closeFund" data-id="${f.id}">Close fund</button>`}</div></div>`;
   h += `<h2>Where it went</h2>`;
   const ents = [...f.entries].sort((a,b)=>b.date.localeCompare(a.date)||(b.ts||0)-(a.ts||0));
-  if (!ents.length) return h + `<div class="list"><div class="empty-note">No spending logged against this fund yet.</div></div>`;
-  return h + `<div class="list">`+ents.map(e=>`<div class="row"><div class="grow"><div class="t">${esc(e.purpose)}</div><div class="d">${fmtDate(e.date)}${e.receipt?" · OR# "+esc(e.receipt):" · no receipt"}</div></div><div class="a num">${peso(e.amount)}</div><button class="btn small" data-act="editEntry" data-fund="${f.id}" data-id="${e.id}" aria-label="Edit ${esc(e.purpose)}">Edit</button></div>`).join("")+`</div>`;
+  h += ents.length ? `<div class="list">`+ents.map(e=>`<div class="row"><div class="grow"><div class="t">${esc(e.purpose)}</div><div class="d">${fmtDate(e.date)}${e.receipt?" · OR# "+esc(e.receipt):" · no receipt"}</div></div><div class="a num">${peso(e.amount)}</div>${cl?"":`<button class="btn small" data-act="editEntry" data-fund="${f.id}" data-id="${e.id}" aria-label="Edit ${esc(e.purpose)}">Edit</button>`}</div>`).join("")+`</div>`
+    : `<div class="list"><div class="empty-note">No spending logged against this fund.</div></div>`;
+  if (closedF.length){
+    h += `<h2>Closed funds</h2><div class="list">`+closedF.map(x=>{
+      const sp = x.entries.reduce((a,e)=>a+Number(e.amount),0);
+      return `<button class="row tap" data-act="pickFund" data-id="${x.id}"><div class="grow"><div class="t">${esc(x.name)}</div><div class="d">Closed ${fmtDate(x.closed.date)} · ${peso(sp)} spent of ${peso(x.amount)}</div></div><div class="a" style="color:var(--muted);font-weight:500">View</div></button>`;
+    }).join("")+`</div>`;
+  }
+  return h;
 }
 
 function render(){
@@ -776,6 +789,15 @@ const A = {
   editDebt: d => debtSheet(S.debts.find(x=>x.id===d.id)),
   payDebt: d => payDebtSheet(S.debts.find(x=>x.id===d.id)),
   addFund: () => fundSheet(null),
+  closeFund: d => {
+    const f = S.funds.find(x=>x.id===d.id); if (!f) return;
+    const spent = f.entries.reduce((a,e)=>a+Number(e.amount),0), left = Number(f.amount) - spent;
+    openSheet("Close "+esc(f.name), `<p style="margin:0 0 12px">${peso(spent)} spent of ${peso(f.amount)}. ${left>0?`<b>${peso(left)}</b> to return to the office.`:left<0?`<b>${peso(-left)}</b> for the office to reimburse you.`:"Fully used, nothing to return."}</p>
+      <p class="hint">Closed funds move to the bottom, stay viewable and can still export the liquidation. You can reopen one anytime.</p>
+      <div class="two">${field("Date closed", `<input name="date" type="date" required max="${TODAY()}" value="${TODAY()}">`)}${field("Note (optional)", `<input name="note" maxlength="60" placeholder="e.g. liquidated, change returned">`)}</div>`,
+      "Close fund", fd=>{ f.closed = {date:fd.date, note:fd.note.trim()}; S.activeFund = null; commit(); toast(f.name+" closed"); });
+  },
+  reopenFund: d => { const f = S.funds.find(x=>x.id===d.id); if (!f) return; delete f.closed; S.activeFund = f.id; commit(); toast(f.name+" reopened"); },
   editFund: d => fundSheet(S.funds.find(f=>f.id===d.id)),
   pickFund: d => { S.activeFund = d.id; commit(); },
   addEntry: d => entrySheet(S.funds.find(x=>x.id===d.id), null),
@@ -938,7 +960,7 @@ async function initCloud(){
 render();
 initCloud();
 /* ---------- auto-update: upload a new index.html to GitHub and the phone picks it up ---------- */
-const APP_VERSION = "2.3";
+const APP_VERSION = "2.4";
 let swReg = null;
 if ("serviceWorker" in navigator) window.addEventListener("load", ()=>navigator.serviceWorker.register("sw.js").then(r=>{ swReg = r; }).catch(()=>{}));
 async function checkForUpdate(){
